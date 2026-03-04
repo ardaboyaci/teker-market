@@ -1,5 +1,6 @@
-// Utility functions will go here
-export function cn(...inputs: any[]) {
-    // Placeholder for tailwind-merge and clsx
-    return inputs.filter(Boolean).join(' ')
+import { type ClassValue, clsx } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+    return twMerge(clsx(inputs));
 }

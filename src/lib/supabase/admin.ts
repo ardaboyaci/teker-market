@@ -1,17 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 
-// Note: This client uses the SERVICE ROLE KEY. 
-// It bypasses Row Level Security (RLS). 
-// NEVER import this in Client Components.
+// This client bypasses RLS and should ONLY be used in secure Server Components or API Routes
+// where public data is fetched or admin actions are performed.
 export function createAdminClient() {
     return createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        {
-            auth: {
-                autoRefreshToken: false,
-                persistSession: false
-            }
-        }
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 }
