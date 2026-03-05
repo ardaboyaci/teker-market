@@ -22,6 +22,7 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
 
     return useQuery({
         queryKey: ['products', page, pageSize, search, categoryId, status],
+        staleTime: 60_000,
         queryFn: async () => {
             let query = supabase
                 .from('products')
@@ -90,6 +91,7 @@ export function useCategories() {
     const supabase = createBrowserClient();
     return useQuery({
         queryKey: ['categories'],
+        staleTime: 60_000,
         queryFn: async () => {
             const { data, error } = await supabase
                 .from('categories')

@@ -1,15 +1,18 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import { createServerClient } from "@/lib/supabase/server"
 import { PackageSearch, SlidersHorizontal, ChevronRight, Search } from "lucide-react"
+import Image from "next/image"
 
 export const revalidate = 0
 
 import Link from "next/link"
 
-export default async function Home(props: { searchParams: Promise<{ category?: string }> }) {
+export default async function Home(props: { searchParams: Promise<{ category?: string; q?: string; sort?: string }> }) {
     const searchParams = await props.searchParams;
     const activeCategorySlug = searchParams?.category as string | undefined;
+    const searchQuery = searchParams?.q as string | undefined;
+    const sortParam = searchParams?.sort as string | undefined;
 
-    const supabase = createAdminClient()
+    const supabase = await createServerClient()
 
     // Kategorileri Çek
     const { data: categories } = await supabase
@@ -21,7 +24,6 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
     let productQuery = supabase
         .from('products')
         .select('*')
-        .order('created_at', { ascending: false })
         .limit(40)
 
     let activeCategoryName = "Tüm Tekerlekler";
@@ -32,6 +34,24 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
             productQuery = productQuery.eq('category_id', activeCat.id);
             activeCategoryName = activeCat.name;
         }
+    }
+
+    // Madde #3: Arama sorgusu
+    if (searchQuery) {
+        productQuery = productQuery.or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%`);
+        activeCategoryName = `"${searchQuery}" için sonuçlar`;
+    }
+
+    // Madde #10: Sıralama
+    switch (sortParam) {
+        case 'price_asc':
+            productQuery = productQuery.order('sale_price', { ascending: true, nullsFirst: false });
+            break;
+        case 'price_desc':
+            productQuery = productQuery.order('sale_price', { ascending: false, nullsFirst: false });
+            break;
+        default:
+            productQuery = productQuery.order('created_at', { ascending: false });
     }
 
     const { data: products, error } = await productQuery;
@@ -53,14 +73,20 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                             </h1>
                         </Link>
 
-                        <div className="hidden md:flex relative w-96">
+                        {/* Madde #3: Arama Formu */}
+                        <form action="/" method="GET" className="hidden md:flex relative w-96">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <input
                                 type="text"
+                                name="q"
+                                defaultValue={searchQuery || ''}
                                 placeholder="Ürün kodu, adı veya kategori arayın..."
                                 className="w-full bg-slate-100/70 border border-transparent focus:bg-white focus:border-primary/30 focus:ring-2 focus:ring-primary/10 rounded-full py-2 pl-10 pr-4 text-sm transition-all outline-none text-slate-700"
                             />
-                        </div>
+                            {activeCategorySlug && (
+                                <input type="hidden" name="category" value={activeCategorySlug} />
+                            )}
+                        </form>
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -97,7 +123,6 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                             <div className="h-px bg-slate-100 my-2"></div>
 
                             {categories?.map((cat) => {
-                                // Sipariş veya anlamsız root kategorileri gizle (opsiyonel, genelde "tekerlekler" root kategorisini göstermeyebiliriz)
                                 if (cat.slug === 'tekerlekler' || cat.slug === 'aparatlar' || cat.slug === 'aksesuarlar') return null;
 
                                 const isActive = activeCategorySlug === cat.slug;
@@ -142,13 +167,23 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                             <p className="text-sm text-slate-500">{products?.length || 0} ürün listeleniyor</p>
                         </div>
 
+                        {/* Madde #10: Sort Dropdown bağlantılı */}
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-medium text-slate-400">Sırala:</span>
-                            <select className="text-sm border-0 bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer outline-none">
-                                <option>En Yeniler</option>
-                                <option>Fiyata Göre Artan</option>
-                                <option>Fiyata Göre Azalan</option>
-                            </select>
+                            <form action="/" method="GET">
+                                {activeCategorySlug && <input type="hidden" name="category" value={activeCategorySlug} />}
+                                {searchQuery && <input type="hidden" name="q" value={searchQuery} />}
+                                <select
+                                    name="sort"
+                                    defaultValue={sortParam || ''}
+                                    onChange={(e) => (e.target.form as HTMLFormElement)?.submit()}
+                                    className="text-sm border-0 bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer outline-none"
+                                >
+                                    <option value="">En Yeniler</option>
+                                    <option value="price_asc">Fiyata Göre Artan</option>
+                                    <option value="price_desc">Fiyata Göre Azalan</option>
+                                </select>
+                            </form>
                         </div>
                     </div>
 
@@ -160,12 +195,14 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                                     className="group relative bg-white rounded-2xl border border-slate-100 overflow-hidden hover:border-slate-300 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full"
                                 >
 
-                                    {/* Resim Alanı (Geniş boşluklu, açık gri zeminli) */}
+                                    {/* Resim Alanı — Madde #4: next/image */}
                                     <div className="relative w-full aspect-[4/3] bg-slate-50/50 p-4 flex items-center justify-center overflow-hidden border-b border-slate-50">
                                         {item.image_url ? (
-                                            <img
+                                            <Image
                                                 src={item.image_url}
                                                 alt={item.name}
+                                                width={400}
+                                                height={300}
                                                 className="w-full h-full object-contain mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-105"
                                                 loading="lazy"
                                             />
@@ -211,8 +248,8 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                             <div className="w-20 h-20 bg-slate-50 flex items-center justify-center rounded-2xl mb-4">
                                 <PackageSearch className="w-10 h-10 text-slate-300" />
                             </div>
-                            <h2 className="text-lg font-bold text-slate-700 mb-1">Yeni Ürünler Yükleniyor</h2>
-                            <p className="text-sm text-slate-500 max-w-sm">Botumuz arkada veri topluyor veya henüz veritabanında listelenecek tekerlek bulunmuyor.</p>
+                            <h2 className="text-lg font-bold text-slate-700 mb-1">Ürün Bulunamadı</h2>
+                            <p className="text-sm text-slate-500 max-w-sm">Arama kriterlerinize uygun ürün bulunamadı veya henüz veritabanında listelenecek tekerlek bulunmuyor.</p>
                         </div>
                     )}
 

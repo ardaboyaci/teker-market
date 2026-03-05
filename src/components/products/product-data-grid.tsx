@@ -40,7 +40,7 @@ interface DataTableProps<TData, TValue> {
     onCategoryChange: (categoryId: string) => void
     status: string
     onStatusChange: (status: string) => void
-    categories: any[]
+    categories: { id: string; name: string; slug: string | null }[]
     isLoading: boolean
 }
 

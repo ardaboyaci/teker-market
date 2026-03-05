@@ -143,13 +143,16 @@ async function processProduct(item: ScrapedProduct, index: number): Promise<bool
     // Match category
     const categoryId = findCategoryId(item.category);
 
+    // Madde #8: sale_price sadece scraper'dan gelen gerçek veriyi kullanır, rastgele fiyat üretilmez
+    // Madde #13: base_price alanını da doldur
     const productPayload = {
         sku: item.sku,
         name: item.name,
         slug: uniqueSlug,
         image_url: publicUrl || item.imageUrl,
         cost_price: null,
-        sale_price: saleNumeric,
+        base_price: saleNumeric, // Orijinal baz fiyat
+        sale_price: saleNumeric, // Satış fiyatı (fiyat botu sonradan güncelleyebilir)
         quantity_on_hand: 50,
         status: isUnpriced ? 'draft' : 'active',
         description: item.description || null,
