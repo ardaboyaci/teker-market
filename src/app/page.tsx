@@ -1,30 +1,62 @@
 import { createServerClient } from "@/lib/supabase/server"
-import { PackageSearch, SlidersHorizontal, ChevronRight, Search } from "lucide-react"
-import Image from "next/image"
+import { PackageSearch, SlidersHorizontal, ChevronRight } from "lucide-react"
+import Link from "next/link"
+
+// Sprint 4 Hafta 1 Components
+import { AnnouncementBar } from "@/components/storefront/announcement-bar"
+import { ContactBar } from "@/components/storefront/contact-bar"
+import { SearchAutocomplete } from "@/components/storefront/search-autocomplete"
+import { MegaMenu } from "@/components/storefront/mega-menu"
+import { MobileNavDrawer } from "@/components/storefront/mobile-nav-drawer"
+import { HeroSection } from "@/components/storefront/hero-section"
+import { CategoryGrid } from "@/components/storefront/category-grid"
+import { FeaturedProducts } from "@/components/storefront/featured-products"
+import { TrustBand } from "@/components/storefront/trust-band"
+import { WhatsAppFAB } from "@/components/storefront/whatsapp-fab"
+import { TrustFooter } from "@/components/storefront/trust-footer"
+
+// Sprint 4 Hafta 2 Components
+import { AttributeFilterPanel } from "@/components/storefront/attribute-filter-panel"
+import { ActiveFilterChips } from "@/components/storefront/active-filter-chips"
+import { ProductCard } from "@/components/storefront/product-card"
+import { CategoryHeader } from "@/components/storefront/category-header"
+import { BreadcrumbNav } from "@/components/storefront/breadcrumb-nav"
+import { Pagination } from "@/components/storefront/pagination"
 
 export const revalidate = 0
 
-import Link from "next/link"
+const PAGE_SIZE = 40
 
-export default async function Home(props: { searchParams: Promise<{ category?: string; q?: string; sort?: string }> }) {
+export default async function Home(props: {
+    searchParams: Promise<{
+        category?: string
+        q?: string
+        sort?: string
+        page?: string
+        diameter?: string
+        material?: string
+        load?: string
+        type?: string
+    }>
+}) {
     const searchParams = await props.searchParams;
     const activeCategorySlug = searchParams?.category as string | undefined;
     const searchQuery = searchParams?.q as string | undefined;
     const sortParam = searchParams?.sort as string | undefined;
+    const currentPage = Math.max(1, Number(searchParams?.page || "1"));
 
     const supabase = await createServerClient()
 
-    // Kategorileri Çek
+    // ── Kategorileri Çek ──
     const { data: categories } = await supabase
         .from('categories')
         .select('*')
         .order('name')
 
-    // Ürünleri Çek (Kategori Filtresi Varsa Uygula)
+    // ── Ürün Sorgusu ──
     let productQuery = supabase
         .from('products')
-        .select('*')
-        .limit(40)
+        .select('*', { count: 'exact' })
 
     let activeCategoryName = "Tüm Tekerlekler";
 
@@ -36,13 +68,12 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
         }
     }
 
-    // Madde #3: Arama sorgusu
     if (searchQuery) {
         productQuery = productQuery.or(`name.ilike.%${searchQuery}%,sku.ilike.%${searchQuery}%`);
         activeCategoryName = `"${searchQuery}" için sonuçlar`;
     }
 
-    // Madde #10: Sıralama
+    // Madde #16: Genişletilmiş sıralama seçenekleri
     switch (sortParam) {
         case 'price_asc':
             productQuery = productQuery.order('sale_price', { ascending: true, nullsFirst: false });
@@ -50,57 +81,85 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
         case 'price_desc':
             productQuery = productQuery.order('sale_price', { ascending: false, nullsFirst: false });
             break;
+        case 'name_asc':
+            productQuery = productQuery.order('name', { ascending: true });
+            break;
+        case 'name_desc':
+            productQuery = productQuery.order('name', { ascending: false });
+            break;
         default:
             productQuery = productQuery.order('created_at', { ascending: false });
     }
 
-    const { data: products, error } = await productQuery;
+    // Madde #18: Sayfalama — offset/limit
+    const rangeFrom = (currentPage - 1) * PAGE_SIZE;
+    const rangeTo = rangeFrom + PAGE_SIZE - 1;
+    productQuery = productQuery.range(rangeFrom, rangeTo);
 
-    if (error) {
-        console.error("Error fetching products:", error)
+    const { data: products, count: totalCount } = await productQuery;
+
+    // Featured products (first 10 with sale_price — only for homepage)
+    const featuredProducts = products?.filter(p => Number(p.sale_price) > 0).slice(0, 10) || [];
+
+    // Show homepage sections only when no filters active
+    const isHomepage = !activeCategorySlug && !searchQuery;
+
+    // Madde #17: Breadcrumb items
+    const breadcrumbItems = [];
+    if (activeCategorySlug) {
+        const activeCat = categories?.find(c => c.slug === activeCategorySlug);
+        if (activeCat) {
+            breadcrumbItems.push({ label: activeCat.name });
+        }
+    }
+    if (searchQuery) {
+        breadcrumbItems.push({ label: `"${searchQuery}" araması` });
     }
 
     return (
         <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
 
-            {/* Şık ve İnce Üst Bar */}
+            {/* ── Top Bars ── */}
+            <AnnouncementBar />
+            <ContactBar />
+
+            {/* ── Header ── */}
             <header className="bg-white border-b border-slate-200/60 sticky top-0 z-20">
                 <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-6">
+                        <MobileNavDrawer categories={categories || []} />
+
                         <Link href="/">
                             <h1 className="text-2xl tracking-tighter font-extrabold text-slate-900 flex items-center gap-2">
                                 <span className="text-primary text-3xl leading-none">⚙</span> TekerMarket
                             </h1>
                         </Link>
 
-                        {/* Madde #3: Arama Formu */}
-                        <form action="/" method="GET" className="hidden md:flex relative w-96">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                            <input
-                                type="text"
-                                name="q"
-                                defaultValue={searchQuery || ''}
-                                placeholder="Ürün kodu, adı veya kategori arayın..."
-                                className="w-full bg-slate-100/70 border border-transparent focus:bg-white focus:border-primary/30 focus:ring-2 focus:ring-primary/10 rounded-full py-2 pl-10 pr-4 text-sm transition-all outline-none text-slate-700"
-                            />
-                            {activeCategorySlug && (
-                                <input type="hidden" name="category" value={activeCategorySlug} />
-                            )}
-                        </form>
+                        <MegaMenu categories={categories || []} />
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        <button className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">Bayi Girişi</button>
-                        <div className="h-4 w-px bg-slate-200"></div>
-                        <button className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors">İletişim</button>
-                    </div>
+                    <SearchAutocomplete defaultValue={searchQuery} />
                 </div>
             </header>
 
-            <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-8 flex gap-8 relative items-start">
+            {/* ── Hero (only on homepage) ── */}
+            {isHomepage && <HeroSection />}
 
-                {/* Sol Kenar Çubuğu (Kategori Filtreleri) */}
-                <aside className="w-64 flex-shrink-0 hidden lg:block sticky top-24">
+            {/* ── Category Grid (only on homepage) ── */}
+            {isHomepage && categories && <CategoryGrid categories={categories} />}
+
+            {/* ── Featured Products (only on homepage) ── */}
+            {isHomepage && featuredProducts.length > 0 && <FeaturedProducts products={featuredProducts} />}
+
+            {/* ── Trust Band (only on homepage) ── */}
+            {isHomepage && <TrustBand />}
+
+            {/* ── Product Listing ── */}
+            <main className="flex-1 max-w-[1600px] mx-auto w-full px-4 sm:px-6 py-8 flex gap-8 relative items-start" id="products">
+
+                {/* ── Sidebar: Kategoriler + Madde #12 AttributeFilterPanel ── */}
+                <aside className="w-64 flex-shrink-0 hidden lg:block sticky top-24 space-y-4">
+                    {/* Kategori Listesi */}
                     <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="font-bold text-slate-800 tracking-tight">Kategoriler</h2>
@@ -108,7 +167,6 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                         </div>
 
                         <ul className="space-y-1.5">
-                            {/* "Tüm Ürünler" Seçeneği */}
                             <li>
                                 <Link
                                     href="/"
@@ -120,11 +178,10 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                                     <ChevronRight className={`w-3.5 h-3.5 transition-all ${!activeCategorySlug ? 'text-primary translate-x-0.5' : 'text-slate-300 group-hover:text-primary group-hover:translate-x-0.5'}`} />
                                 </Link>
                             </li>
-                            <div className="h-px bg-slate-100 my-2"></div>
+                            <div className="h-px bg-slate-100 my-2" />
 
                             {categories?.map((cat) => {
                                 if (cat.slug === 'tekerlekler' || cat.slug === 'aparatlar' || cat.slug === 'aksesuarlar') return null;
-
                                 const isActive = activeCategorySlug === cat.slug;
                                 return (
                                     <li key={cat.id}>
@@ -141,34 +198,29 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                                 );
                             })}
                         </ul>
+                    </div>
 
-                        <div className="mt-8 pt-6 border-t border-slate-100">
-                            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Markalar</h3>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" defaultChecked className="rounded border-slate-300 text-primary focus:ring-primary/20" />
-                                    <span className="text-sm text-slate-600">Emes Teker</span>
-                                </label>
-                                <label className="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" className="rounded border-slate-300 text-primary focus:ring-primary/20" />
-                                    <span className="text-sm text-slate-600">Kama Teker</span>
-                                </label>
-                            </div>
-                        </div>
+                    {/* Madde #12: Özellik Filtreleri */}
+                    <div className="bg-white rounded-2xl border border-slate-200/60 p-5 shadow-sm">
+                        <h2 className="font-bold text-slate-800 tracking-tight mb-4">Filtreler</h2>
+                        <AttributeFilterPanel />
                     </div>
                 </aside>
 
-                {/* Ürün Listesi Grid'i */}
+                {/* ── Product Grid Area ── */}
                 <section className="flex-1 min-w-0">
 
-                    <div className="mb-6 flex items-end justify-between">
-                        <div>
-                            <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">{activeCategoryName}</h2>
-                            <p className="text-sm text-slate-500">{products?.length || 0} ürün listeleniyor</p>
-                        </div>
+                    {/* Madde #17: Breadcrumb */}
+                    {breadcrumbItems.length > 0 && <BreadcrumbNav items={breadcrumbItems} />}
 
-                        {/* Madde #10: Sort Dropdown bağlantılı */}
-                        <div className="flex items-center gap-3">
+                    {/* Madde #15: CategoryHeader + Madde #16: Genişletilmiş Sıralama */}
+                    <div className="flex items-end justify-between mb-4">
+                        <CategoryHeader
+                            title={activeCategoryName}
+                            count={totalCount ?? products?.length ?? 0}
+                        />
+
+                        <div className="flex items-center gap-3 flex-shrink-0">
                             <span className="text-xs font-medium text-slate-400">Sırala:</span>
                             <form action="/" method="GET">
                                 {activeCategorySlug && <input type="hidden" name="category" value={activeCategorySlug} />}
@@ -180,67 +232,33 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                                     className="text-sm border-0 bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer outline-none"
                                 >
                                     <option value="">En Yeniler</option>
-                                    <option value="price_asc">Fiyata Göre Artan</option>
-                                    <option value="price_desc">Fiyata Göre Azalan</option>
+                                    <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
+                                    <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
+                                    <option value="name_asc">İsim: A → Z</option>
+                                    <option value="name_desc">İsim: Z → A</option>
                                 </select>
                             </form>
                         </div>
                     </div>
 
+                    {/* Madde #13: Aktif Filtre Chip'leri */}
+                    <ActiveFilterChips />
+
+                    {/* Product Grid — Madde #14: ProductCard bileşeni */}
                     {products && products.length > 0 ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                             {products.map((item) => (
-                                <div
+                                <ProductCard
                                     key={item.id}
-                                    className="group relative bg-white rounded-2xl border border-slate-100 overflow-hidden hover:border-slate-300 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full"
-                                >
-
-                                    {/* Resim Alanı — Madde #4: next/image */}
-                                    <div className="relative w-full aspect-[4/3] bg-slate-50/50 p-4 flex items-center justify-center overflow-hidden border-b border-slate-50">
-                                        {item.image_url ? (
-                                            <Image
-                                                src={item.image_url}
-                                                alt={item.name}
-                                                width={400}
-                                                height={300}
-                                                className="w-full h-full object-contain mix-blend-multiply transition-transform duration-700 ease-out group-hover:scale-105"
-                                                loading="lazy"
-                                            />
-                                        ) : (
-                                            <PackageSearch className="w-10 h-10 text-slate-200" />
-                                        )}
-
-                                        <div className="absolute inset-x-0 bottom-0 p-3 opacity-0 translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300 ease-out flex justify-center">
-                                            <button className="w-full bg-primary/95 backdrop-blur text-white text-[13px] font-semibold py-2 rounded-lg hover:bg-primary transition-colors shadow-sm">
-                                                Detaylı İncele
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* İçerik Alanı */}
-                                    <div className="p-5 flex flex-col flex-grow bg-white">
-                                        <span className="text-[11px] font-bold text-slate-400 tracking-widest mb-1.5 uppercase">
-                                            {item.sku}
-                                        </span>
-
-                                        <h3 className="font-semibold text-slate-800 text-[14px] leading-snug mb-4 line-clamp-2">
-                                            {item.name}
-                                        </h3>
-
-                                        <div className="mt-auto pt-3 border-t border-slate-100/60 flex items-end justify-between">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-medium text-slate-400 mb-0.5 uppercase tracking-wide">Toptan Fiyat</span>
-                                                <span className="text-[19px] font-extrabold text-slate-900 tracking-tight">
-                                                    {Number(item.sale_price) > 0
-                                                        ? `₺${Number(item.sale_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`
-                                                        : 'Fiyat Sorunuz'
-                                                    }
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                </div>
+                                    id={item.id}
+                                    name={item.name}
+                                    sku={item.sku}
+                                    slug={item.slug}
+                                    sale_price={item.sale_price}
+                                    image_url={item.image_url}
+                                    quantity_on_hand={item.quantity_on_hand}
+                                    attributes={item.attributes}
+                                />
                             ))}
                         </div>
                     ) : (
@@ -253,9 +271,17 @@ export default async function Home(props: { searchParams: Promise<{ category?: s
                         </div>
                     )}
 
-                </section>
+                    {/* Madde #18: Sayfalama */}
+                    <Pagination totalCount={totalCount ?? 0} pageSize={PAGE_SIZE} />
 
+                </section>
             </main>
+
+            {/* ── Footer ── */}
+            <TrustFooter categories={categories || []} />
+
+            {/* ── WhatsApp FAB ── */}
+            <WhatsAppFAB />
 
         </div>
     )
