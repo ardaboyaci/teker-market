@@ -1,163 +1,156 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
+import { ProductQuerySchema } from '@/lib/validations/price.schema'
 import type { product_status } from '@/types/supabase'
 
-const VALID_STATUSES: product_status[] = ['active', 'inactive', 'draft', 'archived']
-const VALID_SORT_FIELDS = ['created_at', 'name', 'base_price', 'sale_price', 'quantity_on_hand'] as const
-const VALID_SORT_DIRS  = ['asc', 'desc'] as const
+// ── Cache factory ─────────────────────────────────────────────────────────────
+// Her benzersiz parametre kombinasyonu için ayrı cache entry oluşturur.
+// revalidate: 60 sn — 3660 ürün için DB'ye gereksiz istek atmaz.
+function getCachedProducts(params: Record<string, unknown>) {
+    const cacheKey = JSON.stringify(params)
 
-type SortField = typeof VALID_SORT_FIELDS[number]
-type SortDir   = typeof VALID_SORT_DIRS[number]
+    return unstable_cache(
+        async () => {
+            const supabase = await createServerClient()
 
-function parseParams(req: NextRequest) {
-    const sp = req.nextUrl.searchParams
+            const p = params as ReturnType<typeof buildParams>
 
-    const status     = sp.get('status')   as product_status | null
-    const sort_by    = (sp.get('sort_by')  || 'created_at') as SortField
-    const sort_dir   = (sp.get('sort_dir') || 'desc')       as SortDir
-    const limit      = Math.min(Math.max(parseInt(sp.get('limit')  || '20', 10), 1), 100)
-    const page       = Math.max(parseInt(sp.get('page') || '1', 10), 1)
-
-    return {
-        search:       sp.get('search')?.trim()   || null,
-        category_id:  sp.get('category_id')      || null,
-        // Alt kategoriler dahil mi?
-        include_children: sp.get('include_children') !== 'false',
-        status:       status && VALID_STATUSES.includes(status) ? status : null,
-        min_price:    sp.get('min_price') ? parseFloat(sp.get('min_price')!) : null,
-        max_price:    sp.get('max_price') ? parseFloat(sp.get('max_price')!) : null,
-        low_stock:    sp.get('low_stock') === 'true',
-        is_featured:  sp.get('is_featured') === 'true' ? true : null,
-        sort_by:      VALID_SORT_FIELDS.includes(sort_by)  ? sort_by  : 'created_at',
-        sort_dir:     VALID_SORT_DIRS.includes(sort_dir)   ? sort_dir : 'desc',
-        limit,
-        page,
-        offset: (page - 1) * limit,
-    }
-}
-
-export async function GET(req: NextRequest) {
-    try {
-        const p = parseParams(req)
-        const supabase = await createServerClient()
-
-        // Alt kategori UUID listesini çek (include_children=true ise)
-        let categoryIds: string[] | null = null
-        if (p.category_id) {
-            if (p.include_children) {
-                const { data: catRows } = await supabase
-                    .from('categories')
-                    .select('id, path')
-                    .eq('id', p.category_id)
-                    .single()
-
-                if (catRows?.path) {
-                    // ltree: path ile başlayan tüm alt kategoriler
-                    const { data: children } = await supabase
+            // Alt kategori UUID listesini çek
+            let categoryIds: string[] | null = null
+            if (p.category_id) {
+                if (p.include_children) {
+                    const { data: catRow } = await supabase
                         .from('categories')
-                        .select('id')
-                        // Supabase ltree operatörü: path <@ ancestor
-                        .filter('path', 'cd', catRows.path)
+                        .select('id, path')
+                        .eq('id', p.category_id)
+                        .single()
 
-                    categoryIds = [
-                        p.category_id,
-                        ...(children ?? []).map((c) => c.id),
-                    ]
+                    if (catRow?.path) {
+                        const { data: children } = await supabase
+                            .from('categories')
+                            .select('id')
+                            .filter('path', 'cd', catRow.path)
+
+                        categoryIds = [p.category_id, ...(children ?? []).map((c) => c.id)]
+                    } else {
+                        categoryIds = [p.category_id]
+                    }
                 } else {
                     categoryIds = [p.category_id]
                 }
-            } else {
-                categoryIds = [p.category_id]
             }
-        }
 
-        // Ana sorgu
-        let query = supabase
-            .from('products')
-            .select(
-                `id, sku, barcode, name, slug, short_description,
-                 category_id, category:categories(id, name, slug, path),
-                 base_price, sale_price, vat_rate, currency,
-                 quantity_on_hand, min_stock_level,
-                 weight, width, height,
-                 attributes, status, is_featured, tags,
-                 created_at, updated_at,
-                 primary_image:product_media(storage_path, alt_text)`,
-                { count: 'exact' }
-            )
-            .is('deleted_at', null)
-
-        if (p.search) {
-            query = query.or(
-                `name.ilike.%${p.search}%,sku.ilike.%${p.search}%,barcode.ilike.%${p.search}%`
-            )
-        }
-
-        if (categoryIds) {
-            query = query.in('category_id', categoryIds)
-        }
-
-        if (p.status) {
-            query = query.eq('status', p.status)
-        }
-
-        if (p.min_price !== null) {
-            query = query.gte('sale_price', p.min_price)
-        }
-        if (p.max_price !== null) {
-            query = query.lte('sale_price', p.max_price)
-        }
-
-        if (p.low_stock) {
-            // quantity_on_hand <= min_stock_level — PostgREST ile sütun karşılaştırması
-            query = query.filter('quantity_on_hand', 'lte', supabase
+            let query = supabase
                 .from('products')
-                .select('min_stock_level')
-                .limit(0) as unknown as number
+                .select(
+                    `id, sku, barcode, name, slug, short_description,
+                     category_id, category:categories(id, name, slug, path),
+                     base_price, sale_price, vat_rate, currency,
+                     quantity_on_hand, min_stock_level,
+                     weight, width, height,
+                     attributes, status, is_featured, tags,
+                     created_at, updated_at,
+                     primary_image:product_media(storage_path, alt_text)`,
+                    { count: 'exact' }
+                )
+                .is('deleted_at', null)
+
+            if (p.search) {
+                query = query.or(
+                    `name.ilike.%${p.search}%,sku.ilike.%${p.search}%,barcode.ilike.%${p.search}%`
+                )
+            }
+            if (categoryIds)           query = query.in('category_id', categoryIds)
+            if (p.status)              query = query.eq('status', p.status as product_status)
+            if (p.min_price != null)   query = query.gte('sale_price', p.min_price)
+            if (p.max_price != null)   query = query.lte('sale_price', p.max_price)
+            if (p.is_featured != null) query = query.eq('is_featured', p.is_featured)
+
+            const { data, error, count } = await query
+                .order(p.sort_by, { ascending: p.sort_dir === 'asc' })
+                .range(p.offset, p.offset + p.limit - 1)
+
+            if (error) throw error
+
+            const products = (data ?? []).map((row: any) => ({
+                ...row,
+                category: Array.isArray(row.category) ? row.category[0] ?? null : row.category,
+                primary_image: Array.isArray(row.primary_image)
+                    ? row.primary_image.find((m: any) => m) ?? null
+                    : row.primary_image,
+            }))
+
+            return { products, count: count ?? 0 }
+        },
+        // Cache tag — price_bot veya admin update tetiklenince invalidate edilebilir
+        [`products-list`, cacheKey],
+        { revalidate: 60, tags: ['products'] }
+    )()
+}
+
+// ── Parametre ayrıştırma + Zod validasyon ─────────────────────────────────────
+function buildParams(req: NextRequest) {
+    const sp = req.nextUrl.searchParams
+    const raw = {
+        search:           sp.get('search')?.trim() || undefined,
+        category_id:      sp.get('category_id')    || undefined,
+        include_children: sp.get('include_children') ?? undefined,
+        status:           sp.get('status')          || undefined,
+        min_price:        sp.get('min_price')        || undefined,
+        max_price:        sp.get('max_price')        || undefined,
+        low_stock:        sp.get('low_stock')        || undefined,
+        is_featured:      sp.get('is_featured')      || undefined,
+        sort_by:          sp.get('sort_by')          || undefined,
+        sort_dir:         sp.get('sort_dir')         || undefined,
+        limit:            sp.get('limit')            || undefined,
+        page:             sp.get('page')             || undefined,
+    }
+
+    const parsed = ProductQuerySchema.safeParse(raw)
+    if (!parsed.success) return { error: parsed.error.flatten() }
+
+    const p = parsed.data
+    return {
+        ...p,
+        offset: (p.page - 1) * p.limit,
+    }
+}
+
+// ── Route handler ─────────────────────────────────────────────────────────────
+export async function GET(req: NextRequest) {
+    try {
+        const params = buildParams(req)
+
+        if ('error' in params) {
+            return NextResponse.json(
+                { error: 'Geçersiz parametre.', details: params.error },
+                { status: 400 }
             )
-            // PostgREST doğrudan sütun<sütun karşılaştırmasını desteklemez;
-            // bunun yerine RPC yolunu kullan
         }
 
-        if (p.is_featured !== null) {
-            query = query.eq('is_featured', p.is_featured)
-        }
+        const { products, count } = await getCachedProducts(params)
 
-        const { data, error, count } = await query
-            .order(p.sort_by, { ascending: p.sort_dir === 'asc' })
-            .range(p.offset, p.offset + p.limit - 1)
-
-        if (error) {
-            console.error('[/api/products] Supabase error:', error)
-            return NextResponse.json({ error: 'Veri çekme hatası.' }, { status: 500 })
-        }
-
-        // primary_image: array yerine tek nesne döndür
-        const products = (data ?? []).map((row: any) => ({
-            ...row,
-            category: Array.isArray(row.category) ? row.category[0] ?? null : row.category,
-            primary_image: Array.isArray(row.primary_image)
-                ? row.primary_image.find((m: any) => m) ?? null
-                : row.primary_image,
-        }))
-
-        const totalPages = count ? Math.ceil(count / p.limit) : 0
+        const totalPages = Math.ceil(count / params.limit)
 
         return NextResponse.json(
             {
                 products,
                 pagination: {
-                    page:        p.page,
-                    limit:       p.limit,
-                    total_count: count ?? 0,
+                    page:        params.page,
+                    limit:       params.limit,
+                    total_count: count,
                     total_pages: totalPages,
-                    has_next:    p.page < totalPages,
-                    has_prev:    p.page > 1,
+                    has_next:    params.page < totalPages,
+                    has_prev:    params.page > 1,
                 },
             },
             {
                 status: 200,
-                headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=15' },
+                headers: {
+                    // Edge CDN katmanı 60 sn, stale iken arka planda yeniler
+                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
+                },
             }
         )
     } catch (err) {

@@ -1,84 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { unstable_cache } from 'next/cache'
 import { createServerClient } from '@/lib/supabase/server'
+import { SearchQuerySchema } from '@/lib/validations/price.schema'
 
-// Desteklenen parametreler ve tip korumaları
-function parseParams(req: NextRequest) {
-    const { searchParams } = req.nextUrl
+// ── Cache factory ─────────────────────────────────────────────────────────────
+// Arama sonuçları 30 sn boyunca cache'lenir.
+// Aynı q+filtre kombinasyonu tekrar geldiğinde DB'ye istek atılmaz.
+function getCachedSearch(params: Record<string, unknown>) {
+    const cacheKey = JSON.stringify(params)
 
-    const q            = searchParams.get('q')?.trim() || null
-    const category_id  = searchParams.get('category_id') || null
-    const status       = searchParams.get('status') || 'active'
-    const min_price    = searchParams.get('min_price')
-    const max_price    = searchParams.get('max_price')
-    const low_stock    = searchParams.get('low_stock') === 'true'
-    const limit        = Math.min(parseInt(searchParams.get('limit') || '20', 10), 100)
-    const offset       = Math.max(parseInt(searchParams.get('offset') || '0',  10), 0)
+    return unstable_cache(
+        async () => {
+            const supabase = await createServerClient()
 
-    return {
-        p_search:         q,
-        p_category_id:    category_id,
-        p_status:         status as 'active' | 'inactive' | 'draft' | 'archived' | null,
-        p_min_price:      min_price  ? parseFloat(min_price)  : null,
-        p_max_price:      max_price  ? parseFloat(max_price)  : null,
-        p_low_stock_only: low_stock,
-        p_limit:          isNaN(limit)  ? 20  : limit,
-        p_offset:         isNaN(offset) ? 0   : offset,
-    }
+            const { data, error } = await supabase.rpc('rpc_search_products', {
+                p_search:         params.q          ?? null,
+                p_category_id:    params.category_id ?? null,
+                p_status:         params.status      ?? null,
+                p_min_price:      params.min_price   ?? null,
+                p_max_price:      params.max_price   ?? null,
+                p_low_stock_only: params.low_stock   ?? false,
+                p_limit:          params.limit,
+                p_offset:         params.offset,
+            })
+
+            if (error) throw error
+            return data ?? []
+        },
+        [`search`, cacheKey],
+        { revalidate: 30, tags: ['products', 'search'] }
+    )()
 }
 
+// ── Route handler ─────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
     try {
-        const params = parseParams(req)
+        const sp = req.nextUrl.searchParams
+        const raw = {
+            q:           sp.get('q')?.trim()    || undefined,
+            category_id: sp.get('category_id')  || undefined,
+            status:      sp.get('status')        || undefined,
+            min_price:   sp.get('min_price')     || undefined,
+            max_price:   sp.get('max_price')     || undefined,
+            low_stock:   sp.get('low_stock')     || undefined,
+            limit:       sp.get('limit')         || undefined,
+            offset:      sp.get('offset')        || undefined,
+        }
 
-        // En az 2 karakter veya filtre parametresi zorunlu (boş arama önleme)
-        const hasFilter =
-            params.p_search         !== null ||
-            params.p_category_id    !== null ||
-            params.p_min_price      !== null ||
-            params.p_max_price      !== null ||
-            params.p_low_stock_only === true
-
-        if (!hasFilter) {
+        const parsed = SearchQuerySchema.safeParse(raw)
+        if (!parsed.success) {
             return NextResponse.json(
-                { error: 'En az bir arama parametresi gerekli (q, category_id, min_price, max_price, low_stock).' },
+                { error: 'Geçersiz parametre.', details: parsed.error.flatten() },
                 { status: 400 }
             )
         }
 
-        if (params.p_search !== null && params.p_search.length < 2) {
-            return NextResponse.json(
-                { error: 'Arama terimi en az 2 karakter olmalıdır.' },
-                { status: 400 }
-            )
-        }
-
-        const supabase = await createServerClient()
-
-        const { data, error } = await supabase.rpc('rpc_search_products', params)
-
-        if (error) {
-            console.error('[/api/search] Supabase RPC error:', error)
-            return NextResponse.json(
-                { error: 'Arama sırasında bir hata oluştu.' },
-                { status: 500 }
-            )
-        }
+        const results = await getCachedSearch(parsed.data)
 
         return NextResponse.json(
-            { results: data ?? [], count: (data ?? []).length },
+            { results, count: results.length },
             {
                 status: 200,
                 headers: {
-                    // Tarayıcı 30 sn, CDN/edge 60 sn cache'lesin
-                    'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=30',
+                    'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=15',
                 },
             }
         )
     } catch (err) {
         console.error('[/api/search] Unexpected error:', err)
-        return NextResponse.json(
-            { error: 'Sunucu hatası.' },
-            { status: 500 }
-        )
+        return NextResponse.json({ error: 'Sunucu hatası.' }, { status: 500 })
     }
 }
