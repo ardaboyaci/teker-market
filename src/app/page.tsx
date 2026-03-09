@@ -22,6 +22,7 @@ import { ProductCard } from "@/components/storefront/product-card"
 import { CategoryHeader } from "@/components/storefront/category-header"
 import { BreadcrumbNav } from "@/components/storefront/breadcrumb-nav"
 import { Pagination } from "@/components/storefront/pagination"
+import SortSelect from "@/components/storefront/sort-select"
 
 export const revalidate = 0
 
@@ -222,22 +223,11 @@ export default async function Home(props: {
 
                         <div className="flex w-full sm:w-auto items-center justify-between sm:justify-start gap-3 flex-shrink-0">
                             <span className="text-xs font-medium text-slate-400">Sırala:</span>
-                            <form action="/" method="GET" className="min-w-0">
-                                {activeCategorySlug && <input type="hidden" name="category" value={activeCategorySlug} />}
-                                {searchQuery && <input type="hidden" name="q" value={searchQuery} />}
-                                <select
-                                    name="sort"
-                                    defaultValue={sortParam || ''}
-                                    onChange={(e) => (e.target.form as HTMLFormElement)?.submit()}
-                                    className="text-sm border border-slate-200 rounded-lg bg-white px-3 py-2 font-medium text-slate-700 focus:ring-2 focus:ring-primary/20 cursor-pointer outline-none"
-                                >
-                                    <option value="">En Yeniler</option>
-                                    <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
-                                    <option value="price_desc">Fiyat: Yüksekten Düşüğe</option>
-                                    <option value="name_asc">İsim: A → Z</option>
-                                    <option value="name_desc">İsim: Z → A</option>
-                                </select>
-                            </form>
+                            <SortSelect
+                                sortParam={sortParam}
+                                activeCategorySlug={activeCategorySlug}
+                                searchQuery={searchQuery}
+                            />
                         </div>
                     </div>
 
