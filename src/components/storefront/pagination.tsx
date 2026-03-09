@@ -29,12 +29,12 @@ export function Pagination({
     if (totalPages <= 1) return null
 
     return (
-        <div className="flex items-center justify-center gap-2 mt-8 pt-6 border-t border-slate-100">
+        <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 mt-8 pt-6 border-t border-slate-100">
             {/* Previous */}
             <button
                 onClick={() => goToPage(currentPage - 1)}
                 disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="h-8 w-8 sm:h-9 sm:w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
                 <ChevronLeft className="w-4 h-4 text-slate-600" />
             </button>
@@ -51,7 +51,7 @@ export function Pagination({
                             {showEllipsis && <span className="text-sm text-slate-300 px-1">…</span>}
                             <button
                                 onClick={() => goToPage(page)}
-                                className={`w-9 h-9 rounded-lg text-sm font-medium transition-colors ${page === currentPage
+                                className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg text-xs sm:text-sm font-medium transition-colors ${page === currentPage
                                         ? "bg-primary text-white"
                                         : "text-slate-600 hover:bg-slate-50 border border-slate-200"
                                     }`}
@@ -66,13 +66,13 @@ export function Pagination({
             <button
                 onClick={() => goToPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                className="h-8 w-8 sm:h-9 sm:w-9 inline-flex items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
                 <ChevronRight className="w-4 h-4 text-slate-600" />
             </button>
 
             {/* Info */}
-            <span className="text-xs text-slate-400 ml-3">
+            <span className="w-full text-center text-xs text-slate-400 mt-1 sm:mt-0 sm:w-auto sm:ml-3">
                 Sayfa {currentPage} / {totalPages}
             </span>
         </div>

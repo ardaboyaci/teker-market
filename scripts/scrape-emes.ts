@@ -7,10 +7,44 @@ import path from 'path';
 import { ScrapedProduct } from './types';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const OUTPUT_DIR = path.resolve(process.cwd(), 'scripts', 'output');
-const IMAGES_DIR = path.join(OUTPUT_DIR, 'images');
-const DATA_FILE = path.join(OUTPUT_DIR, 'products.json');
-const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
+const OUTPUT_DIR      = path.resolve(process.cwd(), 'scripts', 'output');
+const IMAGES_DIR      = path.join(OUTPUT_DIR, 'images');
+const DATA_FILE       = path.join(OUTPUT_DIR, 'products.json');
+const CHECKPOINT_FILE = path.join(OUTPUT_DIR, 'checkpoint.json');
+const WATERMARK_PATH  = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
+
+// ─── Checkpoint types & helpers ──────────────────────────────────────────────
+interface Checkpoint {
+    startedAt:       string;
+    completedSeries: string[];          // Tamamlanan seri URL'leri
+    pendingSeries:   SeriesInfo[];      // Henüz işlenmeyen seriler
+    products:        ScrapedProduct[];  // Şimdiye kadar toplanan ürünler
+    seenSkus:        string[];          // Deduplicate için
+    phase:           'scraping' | 'detail' | 'images' | 'done';
+    detailOffset:    number;            // Detail enrichment'ın kaldığı indeks
+    imageOffset:     number;            // Image download'ın kaldığı indeks
+}
+
+async function loadCheckpoint(): Promise<Checkpoint | null> {
+    try {
+        const raw = await fs.readFile(CHECKPOINT_FILE, 'utf-8');
+        const cp  = JSON.parse(raw) as Checkpoint;
+        console.log(`[Checkpoint] Devam noktası bulundu → ${cp.startedAt}`);
+        console.log(`  Tamamlanan seri: ${cp.completedSeries.length}, Toplanan ürün: ${cp.products.length}`);
+        console.log(`  Kalan seri: ${cp.pendingSeries.length}, Faz: ${cp.phase}`);
+        return cp;
+    } catch {
+        return null; // Dosya yok veya bozuk → sıfırdan başla
+    }
+}
+
+async function saveCheckpoint(cp: Checkpoint): Promise<void> {
+    await fs.writeFile(CHECKPOINT_FILE, JSON.stringify(cp, null, 2), 'utf-8');
+}
+
+async function clearCheckpoint(): Promise<void> {
+    try { await fs.unlink(CHECKPOINT_FILE); } catch { /* zaten yok */ }
+}
 
 const BASE_URL = 'https://emesteker.com';
 const CATALOG_URL = `${BASE_URL}/tr/tekerler.html`;
@@ -48,6 +82,94 @@ async function fetchWithRetry(url: string, maxRetries = 3): Promise<string> {
         }
     }
     throw new Error('Unreachable');
+}
+
+/** ASP.NET __doPostBack ile sonraki sayfayı POST ile çeker */
+async function postNextPage(
+    pageUrl: string,
+    eventTarget: string,
+    viewState: string,
+    viewStateGenerator: string,
+    eventValidation: string,
+    maxRetries = 3
+): Promise<string> {
+    // URLSearchParams → application/x-www-form-urlencoded body
+    const body = new URLSearchParams({
+        '__EVENTTARGET':        eventTarget,
+        '__EVENTARGUMENT':      '',
+        '__VIEWSTATE':          viewState,
+        '__VIEWSTATEGENERATOR': viewStateGenerator,
+        '__EVENTVALIDATION':    eventValidation,
+    });
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const { data } = await http.post(pageUrl, body.toString(), {
+                headers: {
+                    'Content-Type':  'application/x-www-form-urlencoded',
+                    'Referer':       pageUrl,
+                    'Origin':        BASE_URL,
+                },
+            });
+            return data;
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Unknown';
+            console.error(`  [POST Retry ${attempt}/${maxRetries}] ${msg}`);
+            if (attempt >= maxRetries) throw new Error(`POST failed after ${maxRetries} retries`);
+            await delay(Math.pow(2, attempt) * 1000);
+        }
+    }
+    throw new Error('Unreachable');
+}
+
+/** Sayfanın gizli ASP.NET alanlarını çıkarır */
+interface AspNetState {
+    viewState:          string;
+    viewStateGenerator: string;
+    eventValidation:    string;
+}
+
+function extractAspNetState($: cheerio.CheerioAPI): AspNetState {
+    return {
+        viewState:          $('input[name="__VIEWSTATE"]').val() as string          ?? '',
+        viewStateGenerator: $('input[name="__VIEWSTATEGENERATOR"]').val() as string ?? '',
+        eventValidation:    $('input[name="__EVENTVALIDATION"]').val() as string    ?? '',
+    };
+}
+
+/**
+ * Sayfalama control ID'sini döndürür.
+ * Emes'in DataPager yapısı: dpUrunSayfalama$ctl01$ctl01 (sayfa 2),
+ *                            dpUrunSayfalama$ctl01$ctl02 (sayfa 3), ...
+ * Sonraki (>) butonu:        dpUrunSayfalama$ctl02$ctl00
+ */
+function findNextPostbackTarget($: cheerio.CheerioAPI): string | null {
+    const pagerSpan = $('#ctl00_ContentPlaceHolder1_dpUrunSayfalama');
+    if (!pagerSpan.length) return null;
+
+    // Aktif (mevcut) sayfayı bul: disabled olmayan <span> içindeki numara
+    const activeSpan = pagerSpan.find('span.scroll-up, span').filter((_, el) => {
+        // Aktif sayfa <span> içinde, <a> değil
+        const tag = (el as any).tagName?.toLowerCase();
+        return tag === 'span';
+    }).first();
+
+    // Sonraki butonu: sağ uçtaki > veya >> içeren <a>
+    let nextTarget: string | null = null;
+
+    pagerSpan.find('a').each((_, el) => {
+        const href = $(el).attr('href') || '';
+        const text = $(el).text().trim();
+
+        // ">" veya ">>" sonraki sayfaya götürür
+        if (/^>$|^>>$|^›$|^»$/.test(text) && href.includes('__doPostBack')) {
+            const match = href.match(/doPostBack\('([^']+)'/);
+            if (match) nextTarget = match[1];
+        }
+    });
+
+    // Sonraki butonu yoksa → son sayfadayız
+    return nextTarget;
 }
 
 // ─── Phase 1: Discover all series/category pages from the main catalog ──────
@@ -106,7 +228,86 @@ async function discoverSeriesPages(): Promise<SeriesInfo[]> {
     return series;
 }
 
-// ─── Phase 2: Scrape product cards from a listing page ──────────────────────
+// ─── Phase 2a: Tüm sayfaları ASP.NET postback ile gez ───────────────────────
+async function scrapeAllPages(startUrl: string, seriesName: string): Promise<ScrapedProduct[]> {
+    const collected: ScrapedProduct[] = [];
+    let pageNum = 1;
+
+    // Sayfa 1: normal GET
+    console.log(`  [Page 1] GET ${startUrl}`);
+    let html: string;
+    try {
+        html = await fetchWithRetry(startUrl);
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown';
+        console.error(`  [Page 1 Error] ${msg}`);
+        return collected;
+    }
+
+    let $ = cheerio.load(html);
+    collected.push(...parseProductCards($, seriesName));
+    console.log(`  [Page 1] ${collected.length} ürün (toplam: ${collected.length})`);
+
+    // Sayfa 2+: __doPostBack POST döngüsü
+    // POST her zaman aynı URL'ye yapılır; VIEWSTATE her sayfada değişir
+    let postUrl = startUrl.startsWith('http') ? startUrl : `${BASE_URL}${startUrl}`;
+
+    // form action göreceli olabilir (./tekerler.html?Seri=3401)
+    const formAction = $('form#aspnetForm, form').first().attr('action');
+    if (formAction) {
+        try { postUrl = new URL(formAction, postUrl).toString(); } catch { /* geçersizse orijinali kullan */ }
+    }
+
+    while (true) {
+        const state      = extractAspNetState($);
+        const nextTarget = findNextPostbackTarget($);
+
+        if (!nextTarget) {
+            console.log(`  [Pagination] Son sayfaya ulaşıldı (${pageNum}. sayfa).`);
+            break;
+        }
+
+        // VIEWSTATE boşsa postback anlamsız — kırık sayfa
+        if (!state.viewState) {
+            console.error('  [Pagination] __VIEWSTATE bulunamadı, pagination durduruluyor.');
+            break;
+        }
+
+        pageNum++;
+        console.log(`  [Page ${pageNum}] POST → eventTarget: ${nextTarget}`);
+
+        try {
+            html = await postNextPage(
+                postUrl,
+                nextTarget,
+                state.viewState,
+                state.viewStateGenerator,
+                state.eventValidation
+            );
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Unknown';
+            console.error(`  [Page ${pageNum} Error] ${msg}`);
+            break;
+        }
+
+        $ = cheerio.load(html);
+        const pageProducts = parseProductCards($, seriesName);
+        collected.push(...pageProducts);
+        console.log(`  [Page ${pageNum}] ${pageProducts.length} ürün (toplam: ${collected.length})`);
+
+        // Sonsuz döngü koruması
+        if (pageNum > 50) {
+            console.warn('  [Pagination] 50 sayfa sınırına ulaşıldı, durduruluyor.');
+            break;
+        }
+
+        await randomDelay();
+    }
+
+    return collected;
+}
+
+// ─── Phase 2c: Scrape product cards from a listing page ─────────────────────
 function parseProductCards($: cheerio.CheerioAPI, seriesName: string): ScrapedProduct[] {
     const products: ScrapedProduct[] = [];
 
@@ -314,8 +515,15 @@ function autoAssignCategory(product: ScrapedProduct): string {
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 async function main() {
-    console.log('━━━ TEKER MARKET PREMIUM SCRAPER v3 ━━━');
+    console.log('━━━ TEKER MARKET PREMIUM SCRAPER v4 (Checkpoint/Resume) ━━━');
     console.log(`[Config] NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+
+    // --reset flag'i ile checkpoint'i sil ve sıfırdan başla
+    const forceReset = process.argv.includes('--reset');
+    if (forceReset) {
+        await clearCheckpoint();
+        console.log('[Checkpoint] --reset: Mevcut ilerleme silindi, sıfırdan başlanıyor.\n');
+    }
 
     // Init directories
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
@@ -329,110 +537,160 @@ async function main() {
         process.exit(1);
     }
 
-    // Pre-load watermark into RAM
     const watermarkBuf = await sharp(WATERMARK_PATH)
         .resize({ width: 150 })
         .ensureAlpha()
         .toBuffer();
     console.log('[Setup] ✓ Watermark buffer ready.\n');
 
-    // ── Step 1: Discover all series pages ────────────────────────────────
-    const seriesPages = await discoverSeriesPages();
-    await randomDelay();
+    // ── Checkpoint'i yükle veya yeni oluştur ─────────────────────────────
+    let cp = await loadCheckpoint();
 
-    // ── Step 2: Scrape product cards from each series page ───────────────
-    const allProducts: ScrapedProduct[] = [];
-    const seenSkus = new Set<string>();
-
-    for (const series of seriesPages) {
-        console.log(`\n[Scrape] ── ${series.name} ──`);
-
-        try {
-            const html = await fetchWithRetry(series.url);
-            const $ = cheerio.load(html);
-            const products = parseProductCards($, series.name);
-
-            // Deduplicate by SKU
-            for (const p of products) {
-                const key = `${p.sku}__${p.name}`;
-                if (!seenSkus.has(key)) {
-                    seenSkus.add(key);
-                    p.category = autoAssignCategory(p);
-                    allProducts.push(p);
-                }
-            }
-
-            console.log(`  Found ${products.length} cards, ${allProducts.length} unique total.`);
-        } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Unknown';
-            console.error(`  [Series Error] ${series.name}: ${msg}`);
-        }
-
+    if (!cp) {
+        // ── Step 1: Discover all series pages ────────────────────────────
+        const seriesPages = await discoverSeriesPages();
         await randomDelay();
+
+        cp = {
+            startedAt:       new Date().toISOString(),
+            completedSeries: [],
+            pendingSeries:   seriesPages,
+            products:        [],
+            seenSkus:        [],
+            phase:           'scraping',
+            detailOffset:    0,
+            imageOffset:     0,
+        };
+        await saveCheckpoint(cp);
+        console.log(`[Checkpoint] Yeni oturum başlatıldı. ${seriesPages.length} seri keşfedildi.\n`);
     }
 
-    // If discovery didn't find series pages and main catalog also had none,
-    // fall back to the existing products.json as a safety net
-    if (allProducts.length === 0) {
-        console.log('\n[Fallback] No products scraped from series pages. Attempting main catalog directly...');
-        try {
-            const html = await fetchWithRetry(CATALOG_URL);
-            const $ = cheerio.load(html);
-            const products = parseProductCards($, 'Tüm Tekerlekler');
-            for (const p of products) {
-                const key = `${p.sku}__${p.name}`;
-                if (!seenSkus.has(key)) {
-                    seenSkus.add(key);
-                    p.category = autoAssignCategory(p);
-                    allProducts.push(p);
+    // ── Step 2: Scrape product cards (kaldığı yerden) ────────────────────
+    if (cp.phase === 'scraping') {
+        const allProducts  = cp.products;
+        const seenSkus     = new Set<string>(cp.seenSkus);
+
+        for (const series of cp.pendingSeries) {
+            console.log(`\n[Scrape] ── ${series.name} ──`);
+            try {
+                const products = await scrapeAllPages(series.url, series.name);
+                for (const p of products) {
+                    const key = `${p.sku}__${p.name}`;
+                    if (!seenSkus.has(key)) {
+                        seenSkus.add(key);
+                        p.category = autoAssignCategory(p);
+                        allProducts.push(p);
+                    }
                 }
+                console.log(`  [Series Done] ${products.length} kart, ${allProducts.length} benzersiz toplam.`);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Unknown';
+                console.error(`  [Series Error] ${series.name}: ${msg} — seri atlanıyor.`);
             }
-            console.log(`  Fallback yielded ${allProducts.length} products.`);
-        } catch {
-            console.error('  [Fallback Error] Could not scrape main catalog either.');
+
+            // Her seri sonrası checkpoint kaydet
+            cp.completedSeries.push(series.url);
+            cp.pendingSeries   = cp.pendingSeries.filter(s => s.url !== series.url);
+            cp.products        = allProducts;
+            cp.seenSkus        = [...seenSkus];
+            await saveCheckpoint(cp);
         }
-    }
 
-    console.log(`\n[Summary] Total unique products discovered: ${allProducts.length}`);
-
-    // ── Step 3: Enrich with detail pages (chunked, rate-limited) ─────────
-    const detailProducts = allProducts.filter(p => p.detailUrl);
-    if (detailProducts.length > 0) {
-        console.log(`\n[Detail] Enriching ${detailProducts.length} products from detail pages...`);
-        const DETAIL_CHUNK = 3;
-        for (let i = 0; i < detailProducts.length; i += DETAIL_CHUNK) {
-            const chunk = detailProducts.slice(i, i + DETAIL_CHUNK);
-            await Promise.all(chunk.map(p => scrapeDetailPage(p)));
-            console.log(`  [Detail] ${Math.min(i + DETAIL_CHUNK, detailProducts.length)}/${detailProducts.length} enriched`);
-            await randomDelay();
+        // Fallback
+        if (allProducts.length === 0) {
+            console.log('\n[Fallback] Seri sayfalarından ürün alınamadı. Ana katalog deneniyor...');
+            try {
+                const products = await scrapeAllPages(CATALOG_URL, 'Tüm Tekerlekler');
+                for (const p of products) {
+                    const key = `${p.sku}__${p.name}`;
+                    if (!seenSkus.has(key)) {
+                        seenSkus.add(key);
+                        p.category = autoAssignCategory(p);
+                        allProducts.push(p);
+                    }
+                }
+                cp.products  = allProducts;
+                cp.seenSkus  = [...seenSkus];
+                console.log(`  Fallback: ${allProducts.length} ürün.`);
+            } catch {
+                console.error('  [Fallback Error] Ana katalog da başarısız.');
+            }
         }
+
+        cp.phase = 'detail';
+        await saveCheckpoint(cp);
+        console.log(`\n[Summary] Toplam benzersiz ürün: ${cp.products.length}`);
     }
 
-    // ── Step 4: Download & watermark images ──────────────────────────────
-    console.log(`\n[Images] Processing ${allProducts.length} images...`);
-    const IMG_CHUNK = 5;
-    for (let i = 0; i < allProducts.length; i += IMG_CHUNK) {
-        const chunk = allProducts.slice(i, i + IMG_CHUNK);
-        await Promise.all(chunk.map(async (p) => {
-            const localPath = await downloadAndWatermark(p.imageUrl, p.sku, watermarkBuf);
-            if (localPath) p.localImagePath = localPath;
-        }));
-        console.log(`  [Images] ${Math.min(i + IMG_CHUNK, allProducts.length)}/${allProducts.length} done`);
+    // ── Step 3: Detail enrichment (kaldığı yerden) ───────────────────────
+    if (cp.phase === 'detail') {
+        const detailProducts = cp.products.filter(p => p.detailUrl);
+        const startIdx       = cp.detailOffset;
+
+        if (detailProducts.length > 0 && startIdx < detailProducts.length) {
+            console.log(`\n[Detail] ${startIdx > 0 ? `Devam ediliyor (${startIdx}/${detailProducts.length})` : `${detailProducts.length} ürün zenginleştiriliyor`}...`);
+            const DETAIL_CHUNK = 3;
+
+            for (let i = startIdx; i < detailProducts.length; i += DETAIL_CHUNK) {
+                const chunk = detailProducts.slice(i, i + DETAIL_CHUNK);
+                await Promise.all(chunk.map(p => scrapeDetailPage(p)));
+                const done = Math.min(i + DETAIL_CHUNK, detailProducts.length);
+                console.log(`  [Detail] ${done}/${detailProducts.length} zenginleştirildi`);
+
+                // Checkpoint: detail offset güncelle
+                cp.detailOffset = done;
+                await saveCheckpoint(cp);
+                await randomDelay();
+            }
+        }
+
+        cp.phase = 'images';
+        await saveCheckpoint(cp);
     }
 
-    // ── Step 5: Save ─────────────────────────────────────────────────────
-    await fs.writeFile(DATA_FILE, JSON.stringify(allProducts, null, 2), 'utf-8');
-    console.log(`\n[Storage] ✓ Saved ${allProducts.length} products to ${DATA_FILE}`);
+    // ── Step 4: Image download (kaldığı yerden) ──────────────────────────
+    if (cp.phase === 'images') {
+        const startIdx = cp.imageOffset;
+        console.log(`\n[Images] ${startIdx > 0 ? `Devam ediliyor (${startIdx}/${cp.products.length})` : `${cp.products.length} görsel işleniyor`}...`);
 
-    // Print category distribution
+        const IMG_CHUNK = 5;
+        for (let i = startIdx; i < cp.products.length; i += IMG_CHUNK) {
+            const chunk = cp.products.slice(i, i + IMG_CHUNK);
+            await Promise.all(chunk.map(async (p) => {
+                const localPath = await downloadAndWatermark(p.imageUrl, p.sku, watermarkBuf);
+                if (localPath) p.localImagePath = localPath;
+            }));
+            const done = Math.min(i + IMG_CHUNK, cp.products.length);
+            console.log(`  [Images] ${done}/${cp.products.length} tamamlandı`);
+
+            // Checkpoint: image offset + ürün listesi (localImagePath'ler kaydedilsin)
+            cp.imageOffset = done;
+            cp.products    = cp.products; // referans zaten güncellendi
+            await saveCheckpoint(cp);
+        }
+
+        cp.phase = 'done';
+        await saveCheckpoint(cp);
+    }
+
+    // ── Step 5: Save final output ─────────────────────────────────────────
+    await fs.writeFile(DATA_FILE, JSON.stringify(cp.products, null, 2), 'utf-8');
+    console.log(`\n[Storage] ✓ ${cp.products.length} ürün ${DATA_FILE} dosyasına yazıldı.`);
+
+    // Kategori dağılımı
     const catCounts: Record<string, number> = {};
-    allProducts.forEach(p => { catCounts[p.category || 'Unknown'] = (catCounts[p.category || 'Unknown'] || 0) + 1; });
-    console.log('\n[Stats] Category Distribution:');
+    cp.products.forEach(p => {
+        catCounts[p.category || 'Unknown'] = (catCounts[p.category || 'Unknown'] || 0) + 1;
+    });
+    console.log('\n[Stats] Kategori Dağılımı:');
     Object.entries(catCounts).sort((a, b) => b[1] - a[1]).forEach(([cat, count]) => {
         console.log(`  ${cat}: ${count} ürün`);
     });
 
-    console.log('\n━━━ SCRAPER v3 COMPLETE ━━━');
+    // Başarıyla tamamlandıysa checkpoint'i temizle
+    await clearCheckpoint();
+    console.log('\n[Checkpoint] ✓ Oturum tamamlandı, checkpoint silindi.');
+    console.log('━━━ SCRAPER v4 COMPLETE ━━━');
 }
 
 main().catch((err: unknown) => {

@@ -114,12 +114,12 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
             {/* ── Header ── */}
             <header className="bg-white border-b border-slate-200/60 sticky top-0 z-20">
-                <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-6">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-3 sm:gap-6 min-w-0">
                         <MobileNavDrawer categories={categories || []} />
                         <Link href="/">
-                            <h1 className="text-2xl tracking-tighter font-extrabold text-slate-900 flex items-center gap-2">
-                                <span className="text-primary text-3xl leading-none">⚙</span> TekerMarket
+                            <h1 className="text-xl sm:text-2xl tracking-tighter font-extrabold text-slate-900 flex items-center gap-2">
+                                <span className="text-primary text-2xl sm:text-3xl leading-none">⚙</span> TekerMarket
                             </h1>
                         </Link>
                         <MegaMenu categories={categories || []} />

@@ -125,13 +125,13 @@ export default async function Home(props: {
 
             {/* ── Header ── */}
             <header className="bg-white border-b border-slate-200/60 sticky top-0 z-20">
-                <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-6">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-3 sm:gap-6 min-w-0">
                         <MobileNavDrawer categories={categories || []} />
 
                         <Link href="/">
-                            <h1 className="text-2xl tracking-tighter font-extrabold text-slate-900 flex items-center gap-2">
-                                <span className="text-primary text-3xl leading-none">⚙</span> TekerMarket
+                            <h1 className="text-xl sm:text-2xl tracking-tighter font-extrabold text-slate-900 flex items-center gap-2">
+                                <span className="text-primary text-2xl sm:text-3xl leading-none">⚙</span> TekerMarket
                             </h1>
                         </Link>
 
@@ -214,22 +214,22 @@ export default async function Home(props: {
                     {breadcrumbItems.length > 0 && <BreadcrumbNav items={breadcrumbItems} />}
 
                     {/* Madde #15: CategoryHeader + Madde #16: Genişletilmiş Sıralama */}
-                    <div className="flex items-end justify-between mb-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-4">
                         <CategoryHeader
                             title={activeCategoryName}
                             count={totalCount ?? products?.length ?? 0}
                         />
 
-                        <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="flex w-full sm:w-auto items-center justify-between sm:justify-start gap-3 flex-shrink-0">
                             <span className="text-xs font-medium text-slate-400">Sırala:</span>
-                            <form action="/" method="GET">
+                            <form action="/" method="GET" className="min-w-0">
                                 {activeCategorySlug && <input type="hidden" name="category" value={activeCategorySlug} />}
                                 {searchQuery && <input type="hidden" name="q" value={searchQuery} />}
                                 <select
                                     name="sort"
                                     defaultValue={sortParam || ''}
                                     onChange={(e) => (e.target.form as HTMLFormElement)?.submit()}
-                                    className="text-sm border-0 bg-transparent font-medium text-slate-700 focus:ring-0 cursor-pointer outline-none"
+                                    className="text-sm border border-slate-200 rounded-lg bg-white px-3 py-2 font-medium text-slate-700 focus:ring-2 focus:ring-primary/20 cursor-pointer outline-none"
                                 >
                                     <option value="">En Yeniler</option>
                                     <option value="price_asc">Fiyat: Düşükten Yükseğe</option>
@@ -246,7 +246,7 @@ export default async function Home(props: {
 
                     {/* Product Grid — Madde #14: ProductCard bileşeni */}
                     {products && products.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                             {products.map((item) => (
                                 <ProductCard
                                     key={item.id}

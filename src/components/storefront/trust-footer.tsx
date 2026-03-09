@@ -10,7 +10,7 @@ interface Category {
 export function TrustFooter({ categories }: { categories: Category[] }) {
     return (
         <footer className="bg-slate-900 text-slate-400">
-            <div className="max-w-[1600px] mx-auto px-6 py-12">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-12">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
                     {/* Brand */}
                     <div>
@@ -79,7 +79,7 @@ export function TrustFooter({ categories }: { categories: Category[] }) {
 
             {/* Copyright */}
             <div className="border-t border-slate-800">
-                <div className="max-w-[1600px] mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
+                <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
                     <p className="text-xs text-slate-500">
                         © {new Date().getFullYear()} TekerMarket. Tüm hakları saklıdır.
                     </p>

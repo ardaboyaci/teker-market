@@ -17,7 +17,7 @@ export function RelatedProducts({ products }: { products: RelatedProduct[] }) {
     return (
         <section className="mt-12 pt-8 border-t border-slate-100">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Benzer Ürünler</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-4 gap-4">
                 {products.slice(0, 4).map((item) => (
                     <Link
                         key={item.id}
@@ -39,10 +39,10 @@ export function RelatedProducts({ products }: { products: RelatedProduct[] }) {
                             )}
                         </div>
                         <div className="p-3">
-                            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">{item.sku}</p>
+                            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase block max-w-full truncate">{item.sku}</p>
                             <h4 className="text-xs font-semibold text-slate-800 line-clamp-2 mt-0.5">{item.name}</h4>
                             {item.sale_price && Number(item.sale_price) > 0 && (
-                                <p className="text-sm font-extrabold text-primary mt-1.5">
+                                <p className="text-sm font-extrabold text-primary mt-1.5 break-words">
                                     ₺{Number(item.sale_price).toLocaleString("tr-TR", { minimumFractionDigits: 2 })}
                                 </p>
                             )}

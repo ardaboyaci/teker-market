@@ -9,7 +9,7 @@ export function HeroSection() {
                 backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
             }} />
 
-            <div className="max-w-[1600px] mx-auto px-6 py-16 md:py-24 relative z-10">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-14 sm:py-16 md:py-24 relative z-10">
                 <div className="max-w-2xl">
                     {/* Badge */}
                     <div className="inline-flex items-center gap-2 bg-primary/20 text-primary-foreground border border-primary/30 rounded-full px-4 py-1.5 text-xs font-semibold mb-6 backdrop-blur-sm">
@@ -18,7 +18,7 @@ export function HeroSection() {
                     </div>
 
                     {/* H1 */}
-                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.1] mb-6">
+                    <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white tracking-tight leading-[1.1] mb-6">
                         Endüstriyel{" "}
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">
                             Tekerlek
@@ -26,7 +26,7 @@ export function HeroSection() {
                         Çözümleri
                     </h1>
 
-                    <p className="text-lg md:text-xl text-slate-400 leading-relaxed mb-8 max-w-lg">
+                    <p className="text-base sm:text-lg md:text-xl text-slate-400 leading-relaxed mb-8 max-w-lg">
                         600+ ürün, rekabetçi toptan fiyatlar ve teknik danışmanlık.
                         Endüstriyel tekerlek ve roda ihtiyaçlarınız için güvenilir çözüm ortağınız.
                     </p>
@@ -52,17 +52,17 @@ export function HeroSection() {
                     </div>
 
                     {/* Stats Mini */}
-                    <div className="flex gap-8 mt-12 pt-8 border-t border-white/10">
+                    <div className="mt-10 sm:mt-12 pt-8 border-t border-white/10 grid grid-cols-3 gap-3 sm:flex sm:gap-8">
                         <div>
-                            <p className="text-2xl font-extrabold text-white">600+</p>
+                            <p className="text-xl sm:text-2xl font-extrabold text-white">600+</p>
                             <p className="text-xs text-slate-500 font-medium">Ürün Çeşidi</p>
                         </div>
                         <div>
-                            <p className="text-2xl font-extrabold text-white">24 Saat</p>
+                            <p className="text-xl sm:text-2xl font-extrabold text-white">24 Saat</p>
                             <p className="text-xs text-slate-500 font-medium">Hızlı Kargo</p>
                         </div>
                         <div>
-                            <p className="text-2xl font-extrabold text-white">%100</p>
+                            <p className="text-xl sm:text-2xl font-extrabold text-white">%100</p>
                             <p className="text-xs text-slate-500 font-medium">Müşteri Memnuniyeti</p>
                         </div>
                     </div>

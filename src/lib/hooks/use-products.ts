@@ -87,6 +87,52 @@ export function useUpdateProduct() {
     });
 }
 
+export function useCreateProduct() {
+    const supabase = createBrowserClient();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (product: Database['public']['Tables']['products']['Insert']) => {
+            const { data, error } = await supabase
+                .from('products')
+                .insert(product)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+        },
+    });
+}
+
+export function useDeleteProduct() {
+    const supabase = createBrowserClient();
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const { data, error } = await supabase
+                .from('products')
+                .update({
+                    deleted_at: new Date().toISOString(),
+                    status: 'archived',
+                })
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+        },
+    });
+}
+
 export function useCategories() {
     const supabase = createBrowserClient();
     return useQuery({

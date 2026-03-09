@@ -5,10 +5,11 @@ import { ProductWithCategory } from "@/lib/hooks/use-products"
 import { InlineEditCell } from "./inline-edit-cell"
 import { formatCurrency } from "@/lib/utils/currency"
 import { Button } from "@/components/ui/button"
-import { MoreHorizontal } from "lucide-react"
+import { Trash2 } from "lucide-react"
 
 export function getProductColumns(
-    onUpdateProduct: (id: string, field: string, value: any) => void
+    onUpdateProduct: (id: string, field: string, value: any) => void,
+    onDeleteProduct?: (product: ProductWithCategory) => void
 ): ColumnDef<ProductWithCategory>[] {
     return [
         {
@@ -114,11 +115,18 @@ export function getProductColumns(
         },
         {
             id: "actions",
+            header: "Aksiyon",
             cell: ({ row }) => {
                 return (
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                        <span className="sr-only">Menüyü aç</span>
-                        <MoreHorizontal className="h-4 w-4" />
+                    <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => onDeleteProduct?.(row.original)}
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Sil
                     </Button>
                 )
             },

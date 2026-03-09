@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, Loader2 } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import Link from "next/link"
 
 interface SearchResult {
@@ -31,13 +30,14 @@ export function SearchAutocomplete({ defaultValue }: { defaultValue?: string }) 
 
         setIsLoading(true)
         try {
-            const supabase = createBrowserClient()
-            const { data } = await supabase.rpc("rpc_search_products", {
-                search_term: term,
-            })
+            const res = await fetch(
+                `/api/search?q=${encodeURIComponent(term)}&limit=6`
+            )
+            if (!res.ok) return
 
-            if (data) {
-                setResults((data as SearchResult[]).slice(0, 6))
+            const { results } = await res.json()
+            if (results) {
+                setResults(results as SearchResult[])
                 setIsOpen(true)
             }
         } catch {

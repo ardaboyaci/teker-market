@@ -18,7 +18,7 @@ export function MobileNavDrawer({ categories }: { categories: Category[] }) {
             {/* Hamburger Button */}
             <button
                 onClick={() => setIsOpen(true)}
-                className="lg:hidden p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
                 aria-label="Menüyü aç"
             >
                 <Menu className="w-5 h-5 text-slate-700" />
@@ -34,7 +34,7 @@ export function MobileNavDrawer({ categories }: { categories: Category[] }) {
 
             {/* Drawer */}
             <div
-                className={`fixed top-0 left-0 bottom-0 w-[300px] bg-white z-50 transform transition-transform duration-300 ease-out lg:hidden shadow-2xl ${isOpen ? "translate-x-0" : "-translate-x-full"
+                className={`fixed top-0 left-0 bottom-0 w-[86vw] max-w-[320px] bg-white z-50 transform transition-transform duration-300 ease-out lg:hidden shadow-2xl ${isOpen ? "translate-x-0" : "-translate-x-full"
                     }`}
             >
                 {/* Header */}
@@ -42,7 +42,7 @@ export function MobileNavDrawer({ categories }: { categories: Category[] }) {
                     <h2 className="text-lg font-bold text-slate-900">⚙ TekerMarket</h2>
                     <button
                         onClick={() => setIsOpen(false)}
-                        className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors"
                     >
                         <X className="w-5 h-5 text-slate-500" />
                     </button>
@@ -84,7 +84,7 @@ export function MobileNavDrawer({ categories }: { categories: Category[] }) {
                             onClick={() => setIsOpen(false)}
                             className="flex items-center justify-between px-4 py-2.5 rounded-lg text-sm text-slate-600 hover:text-primary hover:bg-primary/5 transition-colors"
                         >
-                            <span className="font-medium">{cat.name}</span>
+                            <span className="font-medium min-w-0 truncate pr-2">{cat.name}</span>
                             <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
                         </Link>
                     ))}

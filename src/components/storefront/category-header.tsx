@@ -8,8 +8,8 @@ export function CategoryHeader({
     description?: string
 }) {
     return (
-        <div className="mb-6">
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">
+        <div className="mb-0 sm:mb-6 min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mb-1 break-words">
                 {title}
             </h2>
             <p className="text-sm text-slate-500">

@@ -52,10 +52,10 @@ export function ActiveFilterChips() {
                 <button
                     key={f.key}
                     onClick={() => removeFilter(f.key)}
-                    className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors"
+                    className="inline-flex items-center gap-1.5 bg-primary/10 text-primary text-xs font-medium px-3 py-1.5 rounded-full hover:bg-primary/20 transition-colors max-w-full"
                 >
                     <span className="text-primary/60">{f.label}:</span>
-                    {f.value}
+                    <span className="max-w-[120px] sm:max-w-[200px] truncate">{f.value}</span>
                     <X className="w-3 h-3" />
                 </button>
             ))}

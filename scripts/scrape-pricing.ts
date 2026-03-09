@@ -110,47 +110,75 @@ async function processBatch(products: any[]) {
         let strategy = '';
 
         if (compPrice && ourPrice) {
-            // Both found: Competitive Pricing Strategy
             if (ourPrice > compPrice) {
-                finalPrice = compPrice * 0.98; // Undercut by 2%
+                finalPrice = compPrice * 0.98;
                 strategy = `Undercut Competitor (Our: ${ourPrice}, Comp: ${compPrice})`;
             } else {
                 finalPrice = ourPrice;
                 strategy = `We are cheaper/equal (Our: ${ourPrice}, Comp: ${compPrice})`;
             }
         } else if (ourPrice) {
-            // Only we have it
             finalPrice = ourPrice;
             strategy = `Existing Site Match (Our: ${ourPrice})`;
         } else if (compPrice) {
-            // Only competitor has it
-            finalPrice = compPrice * 0.95; // Aggressive 5% undercut
+            finalPrice = compPrice * 0.95;
             strategy = `Competitor Match -5% (Comp: ${compPrice})`;
         } else {
             console.log(`❌ No prices found.`);
-            continue; // Skip update
+            continue;
         }
 
-        // Round to 2 decimals
         finalPrice = Math.round(finalPrice * 100) / 100;
         console.log(`✅ Set to ₺${finalPrice} [${strategy}]`);
 
-        // Update database
-        const { error } = await supabase
+        // Mevcut fiyatı oku (değişim var mı kontrolü için)
+        const { data: current } = await supabase
             .from('products')
-            .update({
-                sale_price: finalPrice,
-                status: 'active'
-            })
+            .select('sale_price')
+            .eq('id', product.id)
+            .single();
+
+        const oldPrice = current?.sale_price ? parseFloat(current.sale_price) : null;
+        const priceChanged = oldPrice === null || Math.abs(oldPrice - finalPrice) > 0.001;
+
+        // Ürün tablosunu güncelle
+        const { error: updateError } = await supabase
+            .from('products')
+            .update({ sale_price: finalPrice, status: 'active' })
             .eq('id', product.id);
 
-        if (error) {
-            console.error(`  -> DB Error: ${error.message}`);
-        } else {
-            updateCount++;
+        if (updateError) {
+            console.error(`  -> DB Error: ${updateError.message}`);
+            await sleep(500);
+            continue;
         }
 
-        await sleep(500); // Politeness delay
+        // Fiyat değiştiyse geçmişe yaz
+        if (priceChanged) {
+            const { error: histError } = await supabase
+                .from('price_history')
+                .insert({
+                    product_id:  product.id,
+                    price_type:  'sale',
+                    old_price:   oldPrice,
+                    new_price:   finalPrice,
+                    notes:       strategy,
+                });
+
+            if (histError) {
+                console.error(`  -> History Error: ${histError.message}`);
+            } else {
+                const arrow = oldPrice !== null
+                    ? (finalPrice > oldPrice ? '↑' : finalPrice < oldPrice ? '↓' : '=')
+                    : '+';
+                console.log(`  -> Fiyat geçmişi kaydedildi: ${oldPrice ?? '—'} ${arrow} ${finalPrice}`);
+            }
+        } else {
+            console.log(`  -> Fiyat değişmedi (${finalPrice}), geçmiş kaydı atlandı.`);
+        }
+
+        updateCount++;
+        await sleep(500);
     }
     return updateCount;
 }

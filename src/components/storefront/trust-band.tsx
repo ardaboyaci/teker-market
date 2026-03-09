@@ -21,7 +21,7 @@ const trustItems = [
 export function TrustBand() {
     return (
         <section className="py-12 border-y border-slate-100 bg-white">
-            <div className="max-w-[1600px] mx-auto px-6">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {trustItems.map((item, i) => (
                         <div key={i} className="flex items-start gap-4 p-4">
