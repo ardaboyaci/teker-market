@@ -315,7 +315,7 @@ CREATE TABLE price_history (
     product_id      UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     price_type      price_type NOT NULL,           -- base, sale, wholesale, dealer
     old_price       NUMERIC(12,4),
-    new_price       NUMERIC(12,4) NOT NULL,
+    new_price       NUMERIC(12,4),
     change_reason   TEXT,                           -- "Toplu %10 zam", "Manuel düzeltme"
     changed_by      UUID,                           -- Auth user ID
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -411,25 +411,26 @@ CREATE OR REPLACE FUNCTION fn_track_price_changes()
 RETURNS TRIGGER AS $$
 BEGIN
     -- base_price değişikliği
-    IF OLD.base_price IS DISTINCT FROM NEW.base_price THEN
+    -- NULL fiyat price_history'ye kaydedilmez (seed/draft ürünler için)
+    IF OLD.base_price IS DISTINCT FROM NEW.base_price AND NEW.base_price IS NOT NULL THEN
         INSERT INTO price_history (product_id, price_type, old_price, new_price, change_reason)
         VALUES (NEW.id, 'base', OLD.base_price, NEW.base_price, 'Otomatik kayıt');
     END IF;
 
     -- sale_price değişikliği
-    IF OLD.sale_price IS DISTINCT FROM NEW.sale_price THEN
+    IF OLD.sale_price IS DISTINCT FROM NEW.sale_price AND NEW.sale_price IS NOT NULL THEN
         INSERT INTO price_history (product_id, price_type, old_price, new_price, change_reason)
         VALUES (NEW.id, 'sale', OLD.sale_price, NEW.sale_price, 'Otomatik kayıt');
     END IF;
 
     -- wholesale_price değişikliği
-    IF OLD.wholesale_price IS DISTINCT FROM NEW.wholesale_price THEN
+    IF OLD.wholesale_price IS DISTINCT FROM NEW.wholesale_price AND NEW.wholesale_price IS NOT NULL THEN
         INSERT INTO price_history (product_id, price_type, old_price, new_price, change_reason)
         VALUES (NEW.id, 'wholesale', OLD.wholesale_price, NEW.wholesale_price, 'Otomatik kayıt');
     END IF;
 
     -- dealer_price değişikliği
-    IF OLD.dealer_price IS DISTINCT FROM NEW.dealer_price THEN
+    IF OLD.dealer_price IS DISTINCT FROM NEW.dealer_price AND NEW.dealer_price IS NOT NULL THEN
         INSERT INTO price_history (product_id, price_type, old_price, new_price, change_reason)
         VALUES (NEW.id, 'dealer', OLD.dealer_price, NEW.dealer_price, 'Otomatik kayıt');
     END IF;

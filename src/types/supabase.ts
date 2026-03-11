@@ -358,6 +358,9 @@ export interface Database {
                     height: string | null
                     id: string
                     is_featured: boolean
+                    competitor_price: string | null
+                    competitor_source: string | null
+                    competitor_scraped_at: string | null
                     max_stock_level: number | null
                     meta: Json | null
                     min_stock_level: number
@@ -392,6 +395,9 @@ export interface Database {
                     height?: string | null
                     id?: string
                     is_featured?: boolean
+                    competitor_price?: string | null
+                    competitor_source?: string | null
+                    competitor_scraped_at?: string | null
                     max_stock_level?: number | null
                     meta?: Json | null
                     min_stock_level?: number
@@ -426,6 +432,9 @@ export interface Database {
                     height?: string | null
                     id?: string
                     is_featured?: boolean
+                    competitor_price?: string | null
+                    competitor_source?: string | null
+                    competitor_scraped_at?: string | null
                     max_stock_level?: number | null
                     meta?: Json | null
                     min_stock_level?: number
@@ -634,6 +643,9 @@ export interface Database {
                     height: number | null
                     id: string
                     is_featured: boolean
+                    competitor_price: string | null
+                    competitor_source: string | null
+                    competitor_scraped_at: string | null
                     max_stock_level: number | null
                     meta: Json | null
                     min_stock_level: number

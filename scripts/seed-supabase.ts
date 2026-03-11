@@ -95,14 +95,14 @@ function findCategoryId(categoryName?: string): string | null {
     return null;
 }
 
-async function processProduct(item: ScrapedProduct, index: number): Promise<boolean> {
+async function processProduct(item: ScrapedProduct, index: number, skipImages = false): Promise<boolean> {
     let publicUrl = '';
     const safeSku = item.sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const fileName = `${safeSku}.webp`;
     const filePath = `products/${fileName}`;
 
     // Upload image to Supabase Storage
-    if (item.localImagePath) {
+    if (!skipImages && item.localImagePath) {
         try {
             const imageBuffer = await fs.readFile(item.localImagePath);
             const { error } = await supabase.storage.from(BUCKET_NAME).upload(filePath, imageBuffer, {
@@ -145,14 +145,14 @@ async function processProduct(item: ScrapedProduct, index: number): Promise<bool
 
     // Madde #8: sale_price sadece scraper'dan gelen gerçek veriyi kullanır, rastgele fiyat üretilmez
     // Madde #13: base_price alanını da doldur
-    const productPayload = {
+    // Fiyatsız ürünlerde price alanlarını payload'a dahil etme.
+    // Böylece trigger tetiklenmez ve price_history NOT NULL hatası oluşmaz.
+    const productPayload: Record<string, unknown> = {
         sku: item.sku,
         name: item.name,
         slug: uniqueSlug,
         image_url: publicUrl || item.imageUrl,
         cost_price: null,
-        base_price: saleNumeric, // Orijinal baz fiyat
-        sale_price: saleNumeric, // Satış fiyatı (fiyat botu sonradan güncelleyebilir)
         quantity_on_hand: 50,
         status: isUnpriced ? 'draft' : 'active',
         description: item.description || null,
@@ -160,6 +160,11 @@ async function processProduct(item: ScrapedProduct, index: number): Promise<bool
         attributes: Object.keys(attributes).length > 0 ? attributes : null,
         category_id: categoryId,
     };
+    // Yalnızca gerçek fiyat varsa ekle — trigger'ın NULL yazmaya çalışmasını önler
+    if (!isUnpriced) {
+        productPayload.base_price = saleNumeric;
+        productPayload.sale_price = saleNumeric;
+    }
 
     const { error: dbError } = await supabase
         .from('products')
@@ -180,6 +185,10 @@ async function processProduct(item: ScrapedProduct, index: number): Promise<bool
 
 async function main() {
     console.log('━━━ TEKER MARKET SEED v3 ━━━');
+    const skipImages = process.argv.includes('--skip-images');
+    if (skipImages) {
+        console.log('[Seed] --skip-images aktif: Resim yükleme atlanacak, sadece DB upsert yapılacak.');
+    }
     await ensureBucketExists();
     await loadCategoryCache();
 
@@ -199,13 +208,13 @@ async function main() {
         let successCount = 0;
         let failCount = 0;
 
-        // Fix: Promise.All Concurrency (Chunked 5 at a time)
-        const chunkSize = 5;
+        // --skip-images modunda görsel yok, daha büyük chunk kullanılabilir
+        const chunkSize = skipImages ? 20 : 5;
         for (let i = 0; i < products.length; i += chunkSize) {
             const chunk = products.slice(i, i + chunkSize);
 
             const results = await Promise.all(
-                chunk.map((item, indexOffset) => processProduct(item, i + indexOffset))
+                chunk.map((item, indexOffset) => processProduct(item, i + indexOffset, skipImages))
             );
 
             const successes = results.filter(r => r).length;

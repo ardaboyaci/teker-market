@@ -1,12 +1,58 @@
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
-import { ProductWithCategory } from "@/lib/hooks/use-products"
+import { ProductWithCategory, useRevisePrice } from "@/lib/hooks/use-products"
 import { InlineEditCell } from "./inline-edit-cell"
 import { formatCurrency } from "@/lib/utils/currency"
 import { Button } from "@/components/ui/button"
-import { Trash2 } from "lucide-react"
+import { Trash2, RefreshCw, CheckCircle2 } from "lucide-react"
+import React from "react"
 
+// ── ReviseButton ──────────────────────────────────────────────────────────────
+function ReviseButton({ productId }: { productId: string }) {
+    const revise = useRevisePrice()
+    const [done, setDone] = React.useState(false)
+
+    const handleClick = () => {
+        revise.mutate(productId, {
+            onSuccess: () => {
+                setDone(true)
+                setTimeout(() => setDone(false), 2500)
+            },
+            onError: (err: unknown) => {
+                const msg = err instanceof Error ? err.message : "Revize başarısız."
+                alert(msg)
+            },
+        })
+    }
+
+    if (done) {
+        return (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Uygulandı
+            </span>
+        )
+    }
+
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={revise.isPending}
+            onClick={handleClick}
+            className="h-6 px-2 text-[11px] font-semibold text-amber-700 border-amber-300 hover:bg-amber-50 hover:border-amber-400 disabled:opacity-50"
+        >
+            {revise.isPending
+                ? <RefreshCw className="w-3 h-3 animate-spin" />
+                : "Revize"
+            }
+        </Button>
+    )
+}
+
+// ── Kolon tanımları ───────────────────────────────────────────────────────────
 export function getProductColumns(
     onUpdateProduct: (id: string, field: string, value: any) => void,
     onDeleteProduct?: (product: ProductWithCategory) => void
@@ -35,101 +81,115 @@ export function getProductColumns(
             enableSorting: false,
             enableHiding: false,
         },
-        {
-            accessorKey: "sku",
-            header: "SKU",
-            cell: ({ row }) => <span className="font-medium">{row.original.sku}</span>
-        },
-        {
-            accessorKey: "name",
-            header: "Ürün Adı",
-        },
-        {
-            id: "category",
-            accessorFn: (row) => row.category?.name || "-",
-            header: "Kategori",
-        },
+        { accessorKey: "sku",  header: "SKU",     cell: ({ row }) => <span className="font-medium">{row.original.sku}</span> },
+        { accessorKey: "name", header: "Ürün Adı" },
+        { id: "category", accessorFn: (row) => row.category?.name || "-", header: "Kategori" },
         {
             accessorKey: "quantity_on_hand",
             header: "Stok",
-            cell: ({ row }) => {
-                return (
-                    <InlineEditCell
-                        initialValue={row.original.quantity_on_hand}
-                        type="number"
-                        onSave={(val) => onUpdateProduct(row.original.id, "quantity_on_hand", val)}
-                    />
-                )
-            }
+            cell: ({ row }) => (
+                <InlineEditCell initialValue={row.original.quantity_on_hand} type="number"
+                    onSave={(val) => onUpdateProduct(row.original.id, "quantity_on_hand", val)} />
+            )
         },
         {
             accessorKey: "cost_price",
             header: "Alış Fiyatı",
-            cell: ({ row }) => {
-                return (
-                    <InlineEditCell
-                        initialValue={row.original.cost_price}
-                        type="price"
-                        formatDisplay={(val) => formatCurrency(val)}
-                        onSave={(val) => onUpdateProduct(row.original.id, "cost_price", val)}
-                    />
-                )
-            }
+            cell: ({ row }) => (
+                <InlineEditCell initialValue={row.original.cost_price} type="price"
+                    formatDisplay={(val) => formatCurrency(val)}
+                    onSave={(val) => onUpdateProduct(row.original.id, "cost_price", val)} />
+            )
         },
         {
             accessorKey: "sale_price",
             header: "Satış Fiyatı",
+            cell: ({ row }) => (
+                <InlineEditCell initialValue={row.original.sale_price} type="price"
+                    formatDisplay={(val) => formatCurrency(val)}
+                    onSave={(val) => onUpdateProduct(row.original.id, "sale_price", val)} />
+            )
+        },
+        // ── Rakip Fiyat — sadece dashboard, storefront'a geçirilmiyor ─────────
+        {
+            id: "competitor_price",
+            header: () => (
+                <span className="flex items-center gap-1">
+                    <span className="text-amber-700">Rakip Fiyat</span>
+                    <span className="text-[10px] font-normal text-slate-400">(e-tekerlek)</span>
+                </span>
+            ),
             cell: ({ row }) => {
+                const cp        = (row.original as any).competitor_price
+                const scrapedAt = (row.original as any).competitor_scraped_at as string | null
+                const hasPrice  = cp !== null && cp !== undefined && Number(cp) > 0
+                const compNum   = hasPrice ? Number(cp) : null
+                const saleNum   = row.original.sale_price ? parseFloat(String(row.original.sale_price)) : null
+
+                const diff = (saleNum !== null && compNum !== null)
+                    ? ((saleNum - compNum) / compNum * 100).toFixed(1)
+                    : null
+
+                const dateStr = scrapedAt
+                    ? new Date(scrapedAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })
+                    : null
+
                 return (
-                    <InlineEditCell
-                        initialValue={row.original.sale_price}
-                        type="price"
-                        formatDisplay={(val) => formatCurrency(val)}
-                        onSave={(val) => onUpdateProduct(row.original.id, "sale_price", val)}
-                    />
+                    <div className="flex flex-col gap-1.5 min-w-[140px]">
+                        {hasPrice ? (
+                            <>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-sm font-semibold text-amber-700">
+                                        {formatCurrency(cp)}
+                                    </span>
+                                    {diff !== null && (
+                                        <span className={`text-[10px] font-bold px-1 rounded ${
+                                            parseFloat(diff) > 0
+                                                ? "bg-red-50 text-red-500"
+                                                : "bg-emerald-50 text-emerald-600"
+                                        }`}>
+                                            {parseFloat(diff) > 0 ? `+${diff}%` : `${diff}%`}
+                                        </span>
+                                    )}
+                                </div>
+                                {dateStr && (
+                                    <span className="text-[10px] text-slate-400">{dateStr} güncellendi</span>
+                                )}
+                                <ReviseButton productId={row.original.id} />
+                            </>
+                        ) : (
+                            <span className="text-[11px] italic text-slate-300">Eşleşme yok</span>
+                        )}
+                    </div>
                 )
-            }
+            },
         },
         {
             accessorKey: "status",
             header: "Durum",
             cell: ({ row }) => {
-                const statuses: Record<string, string> = {
-                    active: 'Aktif',
-                    inactive: 'Pasif',
-                    draft: 'Taslak',
-                    archived: 'Arşiv',
-                };
-                const status = row.original.status;
+                const map: Record<string, string> = { active: "Aktif", inactive: "Pasif", draft: "Taslak", archived: "Arşiv" }
+                const s = row.original.status
                 return (
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold
-            ${status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : ''}
-            ${status === 'inactive' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : ''}
-            ${status === 'draft' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400' : ''}
-            ${status === 'archived' ? 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-400' : ''}
-          `}>
-                        {statuses[status] || status}
-                    </span>
+                        ${s === "active"   ? "bg-green-100 text-green-800"  : ""}
+                        ${s === "inactive" ? "bg-red-100 text-red-800"      : ""}
+                        ${s === "draft"    ? "bg-yellow-100 text-yellow-800": ""}
+                        ${s === "archived" ? "bg-slate-100 text-slate-800"  : ""}
+                    `}>{map[s] || s}</span>
                 )
             }
         },
         {
             id: "actions",
             header: "Aksiyon",
-            cell: ({ row }) => {
-                return (
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        onClick={() => onDeleteProduct?.(row.original)}
-                    >
-                        <Trash2 className="h-4 w-4" />
-                        Sil
-                    </Button>
-                )
-            },
+            cell: ({ row }) => (
+                <Button type="button" variant="ghost" size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => onDeleteProduct?.(row.original)}>
+                    <Trash2 className="h-4 w-4" /> Sil
+                </Button>
+            ),
         }
     ]
 }

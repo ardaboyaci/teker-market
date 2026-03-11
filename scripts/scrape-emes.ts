@@ -7,28 +7,28 @@ import path from 'path';
 import { ScrapedProduct } from './types';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
-const OUTPUT_DIR      = path.resolve(process.cwd(), 'scripts', 'output');
-const IMAGES_DIR      = path.join(OUTPUT_DIR, 'images');
-const DATA_FILE       = path.join(OUTPUT_DIR, 'products.json');
+const OUTPUT_DIR = path.resolve(process.cwd(), 'scripts', 'output');
+const IMAGES_DIR = path.join(OUTPUT_DIR, 'images');
+const DATA_FILE = path.join(OUTPUT_DIR, 'products.json');
 const CHECKPOINT_FILE = path.join(OUTPUT_DIR, 'checkpoint.json');
-const WATERMARK_PATH  = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
+const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
 
 // ─── Checkpoint types & helpers ──────────────────────────────────────────────
 interface Checkpoint {
-    startedAt:       string;
+    startedAt: string;
     completedSeries: string[];          // Tamamlanan seri URL'leri
-    pendingSeries:   SeriesInfo[];      // Henüz işlenmeyen seriler
-    products:        ScrapedProduct[];  // Şimdiye kadar toplanan ürünler
-    seenSkus:        string[];          // Deduplicate için
-    phase:           'scraping' | 'detail' | 'images' | 'done';
-    detailOffset:    number;            // Detail enrichment'ın kaldığı indeks
-    imageOffset:     number;            // Image download'ın kaldığı indeks
+    pendingSeries: SeriesInfo[];      // Henüz işlenmeyen seriler
+    products: ScrapedProduct[];  // Şimdiye kadar toplanan ürünler
+    seenSkus: string[];          // Deduplicate için
+    phase: 'scraping' | 'detail' | 'images' | 'done';
+    detailOffset: number;            // Detail enrichment'ın kaldığı indeks
+    imageOffset: number;            // Image download'ın kaldığı indeks
 }
 
 async function loadCheckpoint(): Promise<Checkpoint | null> {
     try {
         const raw = await fs.readFile(CHECKPOINT_FILE, 'utf-8');
-        const cp  = JSON.parse(raw) as Checkpoint;
+        const cp = JSON.parse(raw) as Checkpoint;
         console.log(`[Checkpoint] Devam noktası bulundu → ${cp.startedAt}`);
         console.log(`  Tamamlanan seri: ${cp.completedSeries.length}, Toplanan ürün: ${cp.products.length}`);
         console.log(`  Kalan seri: ${cp.pendingSeries.length}, Faz: ${cp.phase}`);
@@ -95,20 +95,20 @@ async function postNextPage(
 ): Promise<string> {
     // URLSearchParams → application/x-www-form-urlencoded body
     const body = new URLSearchParams({
-        '__EVENTTARGET':        eventTarget,
-        '__EVENTARGUMENT':      '',
-        '__VIEWSTATE':          viewState,
+        '__EVENTTARGET': eventTarget,
+        '__EVENTARGUMENT': '',
+        '__VIEWSTATE': viewState,
         '__VIEWSTATEGENERATOR': viewStateGenerator,
-        '__EVENTVALIDATION':    eventValidation,
+        '__EVENTVALIDATION': eventValidation,
     });
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
             const { data } = await http.post(pageUrl, body.toString(), {
                 headers: {
-                    'Content-Type':  'application/x-www-form-urlencoded',
-                    'Referer':       pageUrl,
-                    'Origin':        BASE_URL,
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Referer': pageUrl,
+                    'Origin': BASE_URL,
                 },
             });
             return data;
@@ -124,16 +124,16 @@ async function postNextPage(
 
 /** Sayfanın gizli ASP.NET alanlarını çıkarır */
 interface AspNetState {
-    viewState:          string;
+    viewState: string;
     viewStateGenerator: string;
-    eventValidation:    string;
+    eventValidation: string;
 }
 
 function extractAspNetState($: cheerio.CheerioAPI): AspNetState {
     return {
-        viewState:          $('input[name="__VIEWSTATE"]').val() as string          ?? '',
+        viewState: $('input[name="__VIEWSTATE"]').val() as string ?? '',
         viewStateGenerator: $('input[name="__VIEWSTATEGENERATOR"]').val() as string ?? '',
-        eventValidation:    $('input[name="__EVENTVALIDATION"]').val() as string    ?? '',
+        eventValidation: $('input[name="__EVENTVALIDATION"]').val() as string ?? '',
     };
 }
 
@@ -259,7 +259,7 @@ async function scrapeAllPages(startUrl: string, seriesName: string): Promise<Scr
     }
 
     while (true) {
-        const state      = extractAspNetState($);
+        const state = extractAspNetState($);
         const nextTarget = findNextPostbackTarget($);
 
         if (!nextTarget) {
@@ -461,7 +461,7 @@ async function scrapeDetailPage(product: ScrapedProduct): Promise<void> {
 }
 
 // ─── Phase 4: Download & watermark images ───────────────────────────────────
-async function downloadAndWatermark(imageUrl: string, sku: string, watermarkBuf: Buffer): Promise<string | undefined> {
+async function downloadAndWatermark(imageUrl: string, sku: string): Promise<string | undefined> {
     const safeSku = sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const outputPath = path.join(IMAGES_DIR, `${safeSku}.webp`);
 
@@ -471,7 +471,6 @@ async function downloadAndWatermark(imageUrl: string, sku: string, watermarkBuf:
 
         await sharp(imgBuf)
             .resize(800, null, { withoutEnlargement: true })
-            .composite([{ input: watermarkBuf, gravity: 'southeast', blend: 'over' }])
             .webp({ quality: 85 })
             .toFile(outputPath);
 
@@ -529,19 +528,7 @@ async function main() {
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
     await fs.mkdir(IMAGES_DIR, { recursive: true });
 
-    try {
-        await fs.access(WATERMARK_PATH);
-        console.log('[Setup] ✓ Watermark logo found.');
-    } catch {
-        console.error('[FATAL] watermark-logo.png missing in scripts/. Aborting.');
-        process.exit(1);
-    }
 
-    const watermarkBuf = await sharp(WATERMARK_PATH)
-        .resize({ width: 150 })
-        .ensureAlpha()
-        .toBuffer();
-    console.log('[Setup] ✓ Watermark buffer ready.\n');
 
     // ── Checkpoint'i yükle veya yeni oluştur ─────────────────────────────
     let cp = await loadCheckpoint();
@@ -552,14 +539,14 @@ async function main() {
         await randomDelay();
 
         cp = {
-            startedAt:       new Date().toISOString(),
+            startedAt: new Date().toISOString(),
             completedSeries: [],
-            pendingSeries:   seriesPages,
-            products:        [],
-            seenSkus:        [],
-            phase:           'scraping',
-            detailOffset:    0,
-            imageOffset:     0,
+            pendingSeries: seriesPages,
+            products: [],
+            seenSkus: [],
+            phase: 'scraping',
+            detailOffset: 0,
+            imageOffset: 0,
         };
         await saveCheckpoint(cp);
         console.log(`[Checkpoint] Yeni oturum başlatıldı. ${seriesPages.length} seri keşfedildi.\n`);
@@ -567,8 +554,8 @@ async function main() {
 
     // ── Step 2: Scrape product cards (kaldığı yerden) ────────────────────
     if (cp.phase === 'scraping') {
-        const allProducts  = cp.products;
-        const seenSkus     = new Set<string>(cp.seenSkus);
+        const allProducts = cp.products;
+        const seenSkus = new Set<string>(cp.seenSkus);
 
         for (const series of cp.pendingSeries) {
             console.log(`\n[Scrape] ── ${series.name} ──`);
@@ -590,9 +577,9 @@ async function main() {
 
             // Her seri sonrası checkpoint kaydet
             cp.completedSeries.push(series.url);
-            cp.pendingSeries   = cp.pendingSeries.filter(s => s.url !== series.url);
-            cp.products        = allProducts;
-            cp.seenSkus        = [...seenSkus];
+            cp.pendingSeries = cp.pendingSeries.filter(s => s.url !== series.url);
+            cp.products = allProducts;
+            cp.seenSkus = [...seenSkus];
             await saveCheckpoint(cp);
         }
 
@@ -609,8 +596,8 @@ async function main() {
                         allProducts.push(p);
                     }
                 }
-                cp.products  = allProducts;
-                cp.seenSkus  = [...seenSkus];
+                cp.products = allProducts;
+                cp.seenSkus = [...seenSkus];
                 console.log(`  Fallback: ${allProducts.length} ürün.`);
             } catch {
                 console.error('  [Fallback Error] Ana katalog da başarısız.');
@@ -625,7 +612,7 @@ async function main() {
     // ── Step 3: Detail enrichment (kaldığı yerden) ───────────────────────
     if (cp.phase === 'detail') {
         const detailProducts = cp.products.filter(p => p.detailUrl);
-        const startIdx       = cp.detailOffset;
+        const startIdx = cp.detailOffset;
 
         if (detailProducts.length > 0 && startIdx < detailProducts.length) {
             console.log(`\n[Detail] ${startIdx > 0 ? `Devam ediliyor (${startIdx}/${detailProducts.length})` : `${detailProducts.length} ürün zenginleştiriliyor`}...`);
@@ -657,7 +644,7 @@ async function main() {
         for (let i = startIdx; i < cp.products.length; i += IMG_CHUNK) {
             const chunk = cp.products.slice(i, i + IMG_CHUNK);
             await Promise.all(chunk.map(async (p) => {
-                const localPath = await downloadAndWatermark(p.imageUrl, p.sku, watermarkBuf);
+                const localPath = await downloadAndWatermark(p.imageUrl, p.sku);
                 if (localPath) p.localImagePath = localPath;
             }));
             const done = Math.min(i + IMG_CHUNK, cp.products.length);
@@ -665,7 +652,7 @@ async function main() {
 
             // Checkpoint: image offset + ürün listesi (localImagePath'ler kaydedilsin)
             cp.imageOffset = done;
-            cp.products    = cp.products; // referans zaten güncellendi
+            cp.products = cp.products; // referans zaten güncellendi
             await saveCheckpoint(cp);
         }
 

@@ -129,7 +129,7 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
                     </div>
                 </div>
 
-                <div className="p-8 pb-16 opacity-100 animate-in fade-in duration-500 max-w-7xl mx-auto w-full">
+                <div className="p-6 pb-16 opacity-100 animate-in fade-in duration-500 w-full">
                     {children}
                 </div>
             </main>

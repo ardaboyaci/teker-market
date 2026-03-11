@@ -148,3 +148,25 @@ export function useCategories() {
         }
     });
 }
+
+export function useRevisePrice() {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: async (productId: string) => {
+            const res = await fetch('/api/products/competitor-price', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId }),
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || 'Revize başarısız.');
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['products'] });
+        },
+    });
+}

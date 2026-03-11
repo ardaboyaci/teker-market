@@ -19,6 +19,10 @@ const nextConfig: NextConfig = {
                 hostname: "**.supabase.co",
                 pathname: "/storage/v1/render/image/**",
             },
+            {
+                protocol: "https",
+                hostname: "emesteker.com",
+            },
         ],
     },
 };

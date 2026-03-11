@@ -58,6 +58,8 @@ export default async function Home(props: {
     let productQuery = supabase
         .from('products')
         .select('*', { count: 'exact' })
+        .in('status', ['active', 'draft'])
+        .is('deleted_at', null)
 
     let activeCategoryName = "Tüm Tekerlekler";
 
