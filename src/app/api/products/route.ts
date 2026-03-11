@@ -7,14 +7,14 @@ import type { product_status } from '@/types/supabase'
 // ── Cache factory ─────────────────────────────────────────────────────────────
 // Her benzersiz parametre kombinasyonu için ayrı cache entry oluşturur.
 // revalidate: 60 sn — 3660 ürün için DB'ye gereksiz istek atmaz.
-function getCachedProducts(params: Record<string, unknown>) {
+function getCachedProducts(params: ParsedParams) {
     const cacheKey = JSON.stringify(params)
 
     return unstable_cache(
         async () => {
             const supabase = await createServerClient()
 
-            const p = params as ReturnType<typeof buildParams>
+            const p = params
 
             // Alt kategori UUID listesini çek
             let categoryIds: string[] | null = null
@@ -88,6 +88,9 @@ function getCachedProducts(params: Record<string, unknown>) {
         { revalidate: 60, tags: ['products'] }
     )()
 }
+
+// ── Parsed params tipi (sadece başarılı parse sonucu) ─────────────────────────
+type ParsedParams = Exclude<ReturnType<typeof buildParams>, { error: unknown }>
 
 // ── Parametre ayrıştırma + Zod validasyon ─────────────────────────────────────
 function buildParams(req: NextRequest) {

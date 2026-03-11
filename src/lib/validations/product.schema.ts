@@ -13,7 +13,7 @@ const priceField = z
     .optional()
 
 // ── Ana ürün şeması ───────────────────────────────────────────────────────────
-export const ProductSchema = z.object({
+const ProductBaseSchema = z.object({
     // Kimlik
     sku: z
         .string({ required_error: 'SKU zorunludur.' })
@@ -95,7 +95,8 @@ export const ProductSchema = z.object({
     external_id:  z.string().max(255).nullable().optional(),
     external_url: z.string().url('Geçersiz URL formatı.').nullable().optional(),
 })
-.superRefine((data, ctx) => {
+
+export const ProductSchema = ProductBaseSchema.superRefine((data, ctx) => {
     // sale_price > base_price mantık kontrolü
     if (
         data.sale_price != null &&
@@ -123,10 +124,10 @@ export const ProductSchema = z.object({
 })
 
 // ── Oluşturma şeması (zorunlu alanlar) ───────────────────────────────────────
-export const CreateProductSchema = ProductSchema.required({ sku: true, name: true })
+export const CreateProductSchema = ProductBaseSchema.required({ sku: true, name: true })
 
 // ── Güncelleme şeması (tüm alanlar isteğe bağlı) ─────────────────────────────
-export const UpdateProductSchema = ProductSchema.partial().required({ sku: true })
+export const UpdateProductSchema = ProductBaseSchema.partial().required({ sku: true })
 
 // ── Fiyat botu için minimal şema (sadece fiyat alanları) ─────────────────────
 // Scraper'ın sadece izin verilen alanları yazmasını garantiler
