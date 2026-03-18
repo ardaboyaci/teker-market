@@ -16,7 +16,6 @@
  *   npx ts-node scripts/seo-description-bot.ts --limit=50 # Max 50 ürün işle
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import fs from 'fs/promises';
@@ -25,17 +24,17 @@ import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
-const SUPABASE_URL   = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const GROQ_API_KEY = process.env.GROQ_API_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-if (!GEMINI_API_KEY) { console.error('[Fatal] GEMINI_API_KEY eksik (.env.local)\n  → https://aistudio.google.com/app/apikey adresinden ücretsiz alın'); process.exit(1); }
+if (!GROQ_API_KEY) { console.error('[Fatal] GROQ_API_KEY eksik (.env.local)\n  → https://console.groq.com adresinden ücretsiz alın'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('[Fatal] Supabase env değerleri eksik'); process.exit(1); }
 
 const CHECKPOINT_FILE = path.resolve(process.cwd(), 'scripts/output/seo-checkpoint.json');
-const BATCH_SIZE  = 5;    // Aynı anda Supabase'den çekilecek ürün sayısı
-const CONCURRENCY = 1;    // Sıralı — ücretsiz tier'da paralel istek kotayı hızla eritir
-const DELAY_MS    = 4500; // Her istek arasında bekleme (dakikada max 15 istek = 4sn)
+const BATCH_SIZE = 5;
+const CONCURRENCY = 1;
+const DELAY_MS = 4000; // Groq free tier: 12K TPM, ~450 token/istek → max 26 istek/dk → 4sn güvenli
 
 // CLI flags
 const REWRITE_ALL = process.argv.includes('--all');
@@ -44,8 +43,6 @@ const limitArg = process.argv.find(a => a.startsWith('--limit=')) ?? process.arg
 const MAX_LIMIT = limitArg && !isNaN(Number(limitArg)) ? Number(limitArg) : Infinity;
 
 // ── Clients ───────────────────────────────────────────────────────────────────
-const genAI   = new GoogleGenerativeAI(GEMINI_API_KEY);
-const model   = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ── Tipler ────────────────────────────────────────────────────────────────────
@@ -163,7 +160,7 @@ YANIT FORMATI (sadece JSON döndür, başka hiçbir şey yazma):
 }`;
 }
 
-// ── Claude API Çağrısı ────────────────────────────────────────────────────────
+// ── Groq API Çağrısı ─────────────────────────────────────────────────────────
 interface GeneratedContent {
     description: string;
     short_description: string;
@@ -173,8 +170,26 @@ async function generateDescription(product: Product): Promise<GeneratedContent |
     const prompt = buildPrompt(product);
 
     try {
-        const result = await model.generateContent(prompt);
-        let text = result.response.text().trim();
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${GROQ_API_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.7,
+            }),
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            throw new Error(`HTTP ${res.status}: ${err}`);
+        }
+
+        const data = await res.json() as { choices: { message: { content: string } }[] };
+        let text = data.choices[0]?.message?.content?.trim() ?? '';
 
         // JSON parse — önce düz, sonra markdown code block içinden
         const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -182,13 +197,11 @@ async function generateDescription(product: Product): Promise<GeneratedContent |
 
         const parsed = JSON.parse(text) as GeneratedContent;
 
-        // Temel doğrulama
         if (!parsed.description || !parsed.short_description) {
             console.warn(`  [Warn] ${product.sku}: Eksik alan — JSON parse OK ama içerik boş`);
             return null;
         }
 
-        // short_description 300 karakter sınırı
         if (parsed.short_description.length > 300) {
             parsed.short_description = parsed.short_description.slice(0, 297) + '...';
         }
@@ -196,7 +209,7 @@ async function generateDescription(product: Product): Promise<GeneratedContent |
         return parsed;
     } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error(`  [Gemini Hata] ${product.sku}: ${msg}`);
+        console.error(`  [Groq Hata] ${product.sku}: ${msg}`);
         return null;
     }
 }
@@ -253,6 +266,8 @@ async function processBatch(
                 console.log('✗ DB kayıt başarısız');
             }
             cp.processedIds.push(product.id);
+            // İstek arası bekleme — Groq TPM limitini aşmamak için
+            await new Promise(r => setTimeout(r, DELAY_MS));
         }));
 
         // Her grup sonrası checkpoint kaydet
@@ -275,7 +290,7 @@ async function countTotal(): Promise<number> {
 async function main() {
     console.log('━━━ TEKER MARKET — SEO AÇIKLAMA BOTU ━━━');
     console.log(`Mod: ${REWRITE_ALL ? 'TÜMÜNÜ YENİDEN YAZ' : 'SADECE EKSİKLER'} | ${DRY_RUN ? 'DRY-RUN (DB yazılmaz)' : 'CANLI'}`);
-    console.log(`Model: gemini-2.0-flash-lite (ücretsiz) | Paralel: ${CONCURRENCY} | Batch: ${BATCH_SIZE}\n`);
+    console.log(`Model: llama-3.3-70b-versatile (Groq ücretsiz) | Paralel: ${CONCURRENCY} | Batch: ${BATCH_SIZE}\n`);
 
     const cp = await loadCheckpoint();
     const total = await countTotal();
