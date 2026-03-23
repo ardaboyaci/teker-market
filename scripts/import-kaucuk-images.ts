@@ -1,22 +1,13 @@
 /**
- * KAUÇUK TAKOZ GÖRSEL SCRAPER
- *
- * DB'deki kaucuk_takoz_2026 kaynaklı ürünler için görsel bağlar.
- * Kauçuk takoz ürünlerinde harici site scrapling yerine,
- * ürün adından boyut bilgisi çıkarılır ve genel bir placeholder URL atanır.
- * İleride manuel görsel yüklemesi için product_media kaydı oluşturur.
- *
- * Flags:
- *   --dry-run    DB'ye yazmadan loglar
- *   --limit=N    İlk N ürünü işle
+ * KAUÇUK TAKOZ GÖRSEL BOTU
+ * cifteltakoz.com'dan tip bazlı görsel eşleştirme.
+ * DB ürün adından "TİP X" çıkarılır, o tipe ait görsel kullanılır.
+ * Flags: --dry-run, --limit=N, --reset
  */
 import fs from 'fs/promises';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
-import axios from 'axios';
-import https from 'https';
-import * as cheerio from 'cheerio';
 import { downloadAndProcess, uploadToStorage, linkToProduct, sleep } from './lib/image-pipeline.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -27,137 +18,167 @@ const supabase = createClient(
 );
 
 const DRY_RUN = process.argv.includes('--dry-run');
+const RESET = process.argv.includes('--reset');
 const limitArg = process.argv.find(a => a.startsWith('--limit='));
 const LIMIT = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
 const OUTPUT_DIR = path.resolve(process.cwd(), 'scripts/output/kaucuk-images');
 const LOG_FILE = path.resolve(process.cwd(), 'scripts/output/kaucuk-images-log.json');
+const CHECKPOINT_FILE = path.resolve(process.cwd(), 'scripts/output/kaucuk-checkpoint.json');
+const BASE_URL = 'https://www.cifteltakoz.com';
 
-const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-const http = axios.create({
-    httpsAgent,
-    timeout: 20000,
-    headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept-Language': 'tr-TR,tr;q=0.9',
-    },
-});
+const TIP_IMAGE_MAP: Record<string, string> = {
+    'A': `${BASE_URL}/upload/urunler/kucuk/cift-vidali-takoz-c-tipi.jpg`,
+    'B': `${BASE_URL}/upload/urunler/kucuk/sacli-pullu-vidali-sarsinti-giderici-kaucuk-takoz.jpg`,
+    'C': `${BASE_URL}/upload/urunler/kucuk/cift-somunlu-takoz-c-tipi_1.jpg`,
+    'D': `${BASE_URL}/upload/urunler/kucuk/tek-vidali-takoz-d-tipi.jpg`,
+    'E': `${BASE_URL}/upload/urunler/kucuk/lift-kaldirma-lastigi-takozu.jpg`,
+};
 
-// Google görseller üzerinden kauçuk takoz fotoğrafı bul
-async function findKaucukImage(sku: string, name: string): Promise<string | null> {
-    // Ürün adından boyut çıkar: "KTÇTP 6*7" → "6x7"
-    const sizeMatch = name.match(/(\d+)\s*[*x×]\s*(\d+)/i);
-    const size = sizeMatch ? `${sizeMatch[1]}x${sizeMatch[2]}` : '';
+interface Checkpoint {
+    processedIds: string[];
+    stats: { matched: number; notFound: number; errors: number };
+}
 
-    // Çeşitli kaynaklarda arama dene
-    const searchSites = [
-        {
-            url: `https://www.google.com/search?q=kaucuk+takoz+${encodeURIComponent(size)}+mm&tbm=isch`,
-            imgSel: 'img[data-src]',
-        },
-    ];
-
-    // Direkt tedarikçi sitesi varsa oradan çek
-    const supplierUrls = [
-        `https://www.kayalar.com.tr/tr/arama?q=${encodeURIComponent(sku)}`,
-        `https://www.endustech.com.tr/search?q=${encodeURIComponent(name.split(' ').slice(0, 3).join(' '))}`,
-    ];
-
-    for (const siteUrl of supplierUrls) {
-        try {
-            const { data, status } = await http.get(siteUrl, { validateStatus: () => true });
-            if (status !== 200) continue;
-            const $ = cheerio.load(data);
-            const img = $('img[src*="product"], img[src*="urun"], .product img').first();
-            const src = img.attr('data-src') || img.attr('src') || '';
-            if (src && src.startsWith('http') && !src.includes('placeholder')) {
-                return src;
-            }
-        } catch {
-            continue;
-        }
+async function loadCheckpoint(): Promise<Checkpoint> {
+    if (RESET) {
+        try { await fs.unlink(CHECKPOINT_FILE); } catch { }
+        return { processedIds: [], stats: { matched: 0, notFound: 0, errors: 0 } };
     }
+    try {
+        const cp = JSON.parse(await fs.readFile(CHECKPOINT_FILE, 'utf-8')) as Checkpoint;
+        console.log(`[Checkpoint] Devam — ${cp.processedIds.length} işlendi`);
+        return cp;
+    } catch {
+        return { processedIds: [], stats: { matched: 0, notFound: 0, errors: 0 } };
+    }
+}
+async function saveCheckpoint(cp: Checkpoint) {
+    await fs.writeFile(CHECKPOINT_FILE, JSON.stringify(cp, null, 2), 'utf-8');
+}
 
-    return null;
+function extractTip(name: string): string | null {
+    const m = name.match(/TİP\s+([A-E])/i);
+    return m ? m[1].toUpperCase() : null;
 }
 
 async function main() {
-    console.log('━━━ KAUÇUK TAKOZ GÖRSEL SCRAPER ━━━');
-    if (DRY_RUN) console.log('⚠  DRY-RUN — DB\'ye yazılmıyor\n');
+    console.log('━━━ KAUÇUK TAKOZ GÖRSEL BOTU ━━━');
+    if (DRY_RUN) console.log('⚠  DRY-RUN');
+
+    console.log('\n[Tip Haritası]:');
+    for (const [tip, url] of Object.entries(TIP_IMAGE_MAP)) {
+        console.log(`  TİP ${tip} → ${url.split('/').pop()}`);
+    }
 
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
 
-    const { data: dbProducts } = await supabase
+    const { data: dbProducts, error } = await supabase
         .from('products')
         .select('id, sku, name, image_url')
-        .eq('meta->>source', 'kaucuk_takoz_2026')
         .is('deleted_at', null)
-        .is('image_url', null);
+        .is('image_url', null)
+        .eq('meta->>source', 'kaucuk_takoz_2026');
 
-    console.log(`[DB] ${dbProducts?.length ?? 0} Kauçuk Takoz ürünü görsel bekliyor\n`);
-    const toProcess = LIMIT ? (dbProducts ?? []).slice(0, LIMIT) : (dbProducts ?? []);
+    if (error) { console.error('[DB Hata]', error.message); process.exit(1); }
+    console.log(`\n[DB] ${dbProducts?.length ?? 0} kauçuk takoz ürünü görsel bekliyor`);
 
-    const log: { sku: string; status: string; url?: string }[] = [];
-    let matched = 0, notFound = 0, errors = 0;
+    const cp = await loadCheckpoint();
+    const processedSet = new Set(cp.processedIds);
+    let toProcess = (dbProducts ?? []).filter(p => !processedSet.has(p.id));
+    if (LIMIT) toProcess = toProcess.slice(0, LIMIT);
+    console.log(`[İşlenecek] ${toProcess.length} ürün\n`);
+
+    const log: any[] = [];
+    let { matched, notFound, errors } = cp.stats;
+    const localPaths: Record<string, string> = {};
 
     for (let i = 0; i < toProcess.length; i++) {
         const product = toProcess[i];
-        process.stdout.write(`\r[${i + 1}/${toProcess.length}] ${product.sku.slice(0, 40)}...`);
+        const nameShort = (product.name || product.sku).slice(0, 30);
+        process.stdout.write(`\r[${i + 1}/${toProcess.length}] ${nameShort.padEnd(30)} ...`);
 
-        const imageUrl = await findKaucukImage(product.sku, product.name);
+        const tip = extractTip(product.name || product.sku);
+        const imageUrl = tip ? TIP_IMAGE_MAP[tip] : null;
 
         if (!imageUrl) {
-            log.push({ sku: product.sku, status: 'not_found' });
+            log.push({ sku: product.sku, name: product.name, status: 'no_tip' });
             notFound++;
-            await sleep(200);
+            processedSet.add(product.id);
+            cp.processedIds.push(product.id);
+            cp.stats = { matched, notFound, errors };
+            await saveCheckpoint(cp);
             continue;
         }
 
         if (DRY_RUN) {
-            console.log(`\n  ✓ [DRY] ${product.sku} → ${imageUrl}`);
-            log.push({ sku: product.sku, status: 'dry-run', url: imageUrl });
+            console.log(`\n  ✓ [TİP ${tip}] "${product.name}"`);
+            log.push({ sku: product.sku, name: product.name, status: `dry:tip${tip}`, url: imageUrl });
             matched++;
+            processedSet.add(product.id);
+            cp.processedIds.push(product.id);
+            cp.stats = { matched, notFound, errors };
+            await saveCheckpoint(cp);
             continue;
         }
 
-        const localPath = path.join(OUTPUT_DIR, `${product.sku.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.webp`);
-        const processed = await downloadAndProcess(imageUrl, localPath);
-        if (!processed) {
-            log.push({ sku: product.sku, status: 'download_error' });
+        if (!localPaths[tip]) {
+            const localPath = path.join(OUTPUT_DIR, `tip-${tip}.webp`);
+            const processed = await downloadAndProcess(imageUrl, localPath);
+            if (processed) localPaths[tip] = localPath;
+        }
+
+        if (!localPaths[tip]) {
+            log.push({ sku: product.sku, name: product.name, status: 'download_error' });
             errors++;
-            await sleep(300);
+            processedSet.add(product.id);
+            cp.processedIds.push(product.id);
+            cp.stats = { matched, notFound, errors };
+            await saveCheckpoint(cp);
             continue;
         }
 
-        const publicUrl = await uploadToStorage(supabase, localPath, product.sku);
+        const publicUrl = await uploadToStorage(supabase, localPaths[tip], product.sku);
         if (!publicUrl) {
-            log.push({ sku: product.sku, status: 'upload_error' });
+            log.push({ sku: product.sku, name: product.name, status: 'upload_error' });
             errors++;
+            processedSet.add(product.id);
+            cp.processedIds.push(product.id);
+            cp.stats = { matched, notFound, errors };
+            await saveCheckpoint(cp);
             continue;
         }
 
         const linked = await linkToProduct(supabase, product.id, publicUrl);
         if (linked) {
-            log.push({ sku: product.sku, status: 'ok', url: publicUrl });
+            log.push({ sku: product.sku, name: product.name, status: `ok:tip${tip}`, url: publicUrl });
             matched++;
+            process.stdout.write(`\r  ✅ [TİP ${tip}] ${nameShort}\n`);
         } else {
-            log.push({ sku: product.sku, status: 'link_error' });
+            log.push({ sku: product.sku, name: product.name, status: 'link_error' });
             errors++;
         }
 
-        await sleep(300);
+        processedSet.add(product.id);
+        cp.processedIds.push(product.id);
+        cp.stats = { matched, notFound, errors };
+        await saveCheckpoint(cp);
+        if ((i + 1) % 100 === 0) await fs.writeFile(LOG_FILE, JSON.stringify(log, null, 2), 'utf-8');
+        await sleep(100);
     }
 
+    for (const p of Object.values(localPaths)) {
+        try { await fs.unlink(p); } catch { }
+    }
     await fs.writeFile(LOG_FILE, JSON.stringify(log, null, 2), 'utf-8');
 
     console.log('\n\n━━━ ÖZET ━━━');
     console.table({
         'Görsel Eklendi': { Adet: matched },
-        'Sitede Bulunamadı': { Adet: notFound },
+        'Tip Yok': { Adet: notFound },
         'Hata': { Adet: errors },
         'Toplam': { Adet: toProcess.length },
     });
-    console.log(`[Log] ${LOG_FILE}`);
 }
 
 main().catch(err => { console.error('[Fatal]', err); process.exit(1); });
