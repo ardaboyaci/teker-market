@@ -19,9 +19,9 @@ export function StockBadge({ quantity }: { quantity: number | null }) {
     }
 
     return (
-        <div className="inline-flex items-center gap-1.5 bg-red-50 text-red-600 border border-red-200 rounded-full px-3 py-1">
+        <div className="inline-flex items-center gap-1.5 bg-amber-50 text-amber-600 border border-amber-200 rounded-full px-3 py-1">
             <XCircle className="w-3.5 h-3.5" />
-            <span className="text-xs font-semibold">Tükendi</span>
+            <span className="text-xs font-semibold">Sipariş Üzerine</span>
         </div>
     )
 }

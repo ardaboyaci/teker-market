@@ -24,11 +24,10 @@ import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const GROQ_API_KEY = process.env.GROQ_API_KEY!;
+const GROQ_API_KEY = process.env.GROQ_API_KEY ?? '';
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-if (!GROQ_API_KEY) { console.error('[Fatal] GROQ_API_KEY eksik (.env.local)\n  → https://console.groq.com adresinden ücretsiz alın'); process.exit(1); }
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('[Fatal] Supabase env değerleri eksik'); process.exit(1); }
 
 const CHECKPOINT_FILE = path.resolve(process.cwd(), 'scripts/output/seo-checkpoint.json');
@@ -289,6 +288,12 @@ async function countTotal(): Promise<number> {
 // ── Ana Fonksiyon ─────────────────────────────────────────────────────────────
 async function main() {
     console.log('━━━ TEKER MARKET — SEO AÇIKLAMA BOTU ━━━');
+    if (!GROQ_API_KEY) {
+        console.log('⚠  GROQ_API_KEY bulunamadı.');
+        console.log('   .env.local dosyasına GROQ_API_KEY eklendiğinde bot otomatik çalışır.');
+        console.log('   Ücretsiz key: https://console.groq.com');
+        return;
+    }
     console.log(`Mod: ${REWRITE_ALL ? 'TÜMÜNÜ YENİDEN YAZ' : 'SADECE EKSİKLER'} | ${DRY_RUN ? 'DRY-RUN (DB yazılmaz)' : 'CANLI'}`);
     console.log(`Model: llama-3.3-70b-versatile (Groq ücretsiz) | Paralel: ${CONCURRENCY} | Batch: ${BATCH_SIZE}\n`);
 

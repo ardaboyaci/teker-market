@@ -14,20 +14,23 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ id, name, sku, slug, sale_price, image_url, quantity_on_hand, attributes }: ProductCardProps) {
-    const inStock = (quantity_on_hand ?? 0) > 0
+    // quantity_on_hand null veya 0 olan ürünler "Sipariş Üzerine" — asla Tükendi değil
+    const qty = quantity_on_hand ?? 0
+    const inStock = qty > 0
+    const isOrderBased = qty === 0 || quantity_on_hand === null
     const hasPrice = Number(sale_price) > 0
 
     return (
-        <div className="group relative bg-white rounded-2xl border border-slate-100 overflow-hidden hover:border-slate-300 transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex flex-col h-full">
+        <div className="group relative bg-white rounded-sm border border-[#e2ddd6] overflow-hidden hover:border-amber-400 transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 flex flex-col h-full">
 
             {/* Image Area */}
             <div className="relative w-full aspect-[4/3] bg-slate-50/50 p-3 sm:p-4 flex items-center justify-center overflow-hidden border-b border-slate-50">
                 {/* Stock Badge */}
                 <span className={`absolute top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full z-10 max-w-[70%] truncate ${inStock
                     ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
-                    : "bg-red-50 text-red-500 border border-red-200"
+                    : "bg-amber-50 text-amber-600 border border-amber-200"
                     }`}>
-                    {inStock ? "Stokta" : "Tükendi"}
+                    {inStock ? "Stokta" : "Sipariş Üzerine"}
                 </span>
 
                 {/* WhatsApp Mini Icon */}
@@ -55,7 +58,7 @@ export function ProductCard({ id, name, sku, slug, sale_price, image_url, quanti
                 )}
 
                 <div className="absolute inset-x-0 bottom-0 p-3 opacity-100 translate-y-0 md:opacity-0 md:translate-y-4 md:group-hover:opacity-100 md:group-hover:translate-y-0 transition-all duration-300 ease-out flex justify-center">
-                    <Link href={`/products/${slug}`} className="w-full min-h-10 bg-primary/95 backdrop-blur text-white text-[13px] font-semibold py-2 rounded-lg hover:bg-primary transition-colors shadow-sm text-center flex items-center justify-center">
+                <Link href={`/products/${slug}`} className="w-full min-h-10 bg-[#111111] hover:bg-amber-500 text-white text-[13px] font-bold py-2 rounded-sm transition-colors shadow-sm text-center flex items-center justify-center tracking-wide">
                         Detaylı İncele
                     </Link>
                 </div>

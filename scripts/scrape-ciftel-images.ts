@@ -1,19 +1,18 @@
 /**
- * ÇİFTEL GÖRSEL SCRAPER
- *
- * ciftel.com.tr'den ürün görselleri çeker, watermark ekler,
- * Supabase Storage'a yükler ve DB'deki ÇİFTEL ürünlerinin
- * image_url alanını günceller.
+ * ÇİFTEL GÖRSEL SCRAPER v2
  *
  * Strateji:
- * 1. Shop listesinden tüm ürün detay URL'lerini çek
- * 2. Her detay sayfasından SKU + name + yüksek çözünürlüklü görsel al
- * 3. DB'deki meta.source='ciftel_2026' ürünleriyle isim fuzzy eşleştir
- * 4. Görsel indir → WebP + watermark → Storage'a yükle → image_url güncelle
+ * - ciftel.com.tr/shop/ listesini sayfa sayfa tara
+ * - Her ürün kartından: siteSku (URL'den) + thumbUrl (img src) al
+ * - thumbUrl'den "-420x503" gibi boyut suffix'ini kaldır → orijinal PNG URL
+ * - DB'de sku = siteSku olan ürünü bul → image_url boşsa işle
+ * - Görseli indir → WebP + watermark → Supabase Storage → image_url güncelle
+ *
+ * Detay sayfasına gitmeye GEREK YOK — listing'den yeterli veri geliyor.
  *
  * Flags:
- *   --dry-run   Storage/DB'ye yazmadan log
- *   --limit=N   İlk N ürünü işle
+ *   --dry-run    Storage/DB'ye yazmadan log
+ *   --limit=N    İlk N site ürününü işle (test için)
  */
 
 import axios from 'axios';
@@ -43,12 +42,12 @@ const LIMIT    = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-const CIFTEL_BASE   = 'https://ciftel.com.tr';
-const BUCKET        = 'product-media';
-const WATERMARK     = path.resolve(__dirname, 'watermark-logo.png');
-const OUTPUT_DIR    = path.resolve(__dirname, 'output');
-const IMAGES_DIR    = path.join(OUTPUT_DIR, 'ciftel-images');
-const UNMATCHED_OUT = path.join(OUTPUT_DIR, 'unmatched-ciftel-images.json');
+const CIFTEL_BASE  = 'https://ciftel.com.tr';
+const BUCKET       = 'product-media';
+const WATERMARK    = path.resolve(__dirname, 'watermark-logo.png');
+const OUTPUT_DIR   = path.resolve(__dirname, 'output');
+const IMAGES_DIR   = path.join(OUTPUT_DIR, 'ciftel-images');
+const LOG_FILE     = path.join(OUTPUT_DIR, 'ciftel-images-log.json');
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const http = axios.create({
@@ -56,140 +55,85 @@ const http = axios.create({
     timeout: 20000,
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,*/*;q=0.9',
         'Accept-Language': 'tr-TR,tr;q=0.9',
     },
 });
 
-// ── Token tabanlı eşleşme skoru ──────────────────────────────────────────────
-function tokenMatchScore(a: string, b: string): number {
-    const tokens = a.toUpperCase().match(/[A-ZÇĞİÖŞÜ]+|\d+/g) ?? [];
-    const nameUp = b.toUpperCase();
-    if (!tokens.length) return 0;
-    let hits = 0;
-    for (const t of tokens) {
-        if (t.length >= 2 && nameUp.includes(t)) hits++;
-    }
-    return hits / tokens.length;
+// ── Thumbnail URL'den orijinal büyük URL üret ─────────────────────────────────
+// "https://ciftel.com.tr/wp-content/uploads/2024/07/1336-420x503.png"
+// → "https://ciftel.com.tr/wp-content/uploads/2024/07/1336.png"
+function toOriginalUrl(thumbUrl: string): string {
+    return thumbUrl.replace(/-\d+x\d+(\.\w+)$/, '$1');
 }
 
-// ── Boyut token'larını çıkar: "100x25x12" → ["100", "25", "12"] ─────────────
-function extractDimensions(name: string): string[] {
-    return name.match(/\d+/g) ?? [];
+// ── URL slug'dan site SKU çıkart ──────────────────────────────────────────────
+// "/urun/100x20x12-celik-jantli-beyaz-lastik-1336/" → "1336"
+function extractSiteSku(href: string): string | null {
+    const m = href.match(/-(\w+)\/?$/);
+    return m ? m[1] : null;
 }
 
-// ── Boyut örtüşme skoru (sayısal token kesişimi) ──────────────────────────────
-function dimensionScore(dbName: string, siteName: string): number {
-    const dbDims   = extractDimensions(dbName);
-    const siteDims = extractDimensions(siteName);
-    if (!dbDims.length || !siteDims.length) return 0;
-    const intersection = dbDims.filter(d => siteDims.includes(d));
-    // Her iki tarafın max boyutuna göre normalize et
-    return intersection.length / Math.max(dbDims.length, siteDims.length);
+// ── Tüm shop sayfalarından {siteSku, originalImgUrl} topla ───────────────────
+interface SiteItem {
+    siteSku:      string;
+    originalUrl:  string;
+    thumbUrl:     string;
+    name:         string;
 }
 
-// ── Tip token'larını eşleştir (Lastik, Poliüretan, PVC, Kauçuk...) ───────────
-const TYPE_ALIASES: Record<string, string[]> = {
-    'LASTİK':     ['lastik', 'lastig', 'rubber'],
-    'POLİÜRETAN': ['poliüretan', 'pu', 'pol.', 'polj'],
-    'PVC':        ['pvc'],
-    'KAUÇUK':     ['kauçuk', 'kauc'],
-    'DEMİR':      ['çelik', 'demir', 'metal', 'celik'],
-};
-
-function typeScore(dbName: string, siteName: string): number {
-    const dbUpper   = dbName.toUpperCase();
-    const siteUpper = siteName.toUpperCase();
-    for (const [canonical, aliases] of Object.entries(TYPE_ALIASES)) {
-        const dbHas   = dbUpper.includes(canonical) || aliases.some(a => dbUpper.includes(a.toUpperCase()));
-        const siteHas = siteUpper.includes(canonical) || aliases.some(a => siteUpper.includes(a.toUpperCase()));
-        if (dbHas && siteHas) return 1;
-        if (dbHas !== siteHas) return -0.5; // tip çelişkisi — ceza
-    }
-    return 0;
-}
-
-// ── Birleşik eşleşme skoru ───────────────────────────────────────────────────
-function combinedScore(dbName: string, siteName: string): number {
-    const dimS  = dimensionScore(dbName, siteName); // 0-1, en kritik
-    const typeS = typeScore(dbName, siteName);       // -0.5 veya 0 veya 1
-    const tokS  = tokenMatchScore(dbName, siteName); // 0-1
-    // Ağırlıklar: boyut %60, tip %25, token %15
-    return dimS * 0.60 + Math.max(0, typeS) * 0.25 + tokS * 0.15;
-}
-
-// ── ÇİFTEL shop'tan tüm ürün URL'lerini çek ──────────────────────────────────
-interface CiftelProduct {
-    url:      string;
-    imageUrl: string;
-    name:     string;
-    sku:      string;
-}
-
-async function scrapeAllProductUrls(): Promise<string[]> {
-    const urls = new Set<string>();
+async function collectAllSiteItems(): Promise<SiteItem[]> {
+    const items = new Map<string, SiteItem>(); // siteSku → item (deduplicate)
     let page = 1;
 
     while (true) {
-        const pageUrl = page === 1
+        const url = page === 1
             ? `${CIFTEL_BASE}/shop/`
             : `${CIFTEL_BASE}/shop/page/${page}/`;
 
-        console.log(`  [Shop] Sayfa ${page}: ${pageUrl}`);
+        process.stdout.write(`\r  [Shop] Sayfa ${page} taranıyor... (${items.size} ürün)`);
 
         try {
-            const { data } = await http.get(pageUrl, { validateStatus: () => true });
+            const { data } = await http.get(url, { validateStatus: () => true });
             const $ = cheerio.load(data);
 
-            const links = $('li.product a.woocommerce-loop-product__link, li.product a').map((_, el) => $(el).attr('href')).get();
-            const productLinks = links.filter(l => l && l.includes('/urun/'));
+            const productEls = $('li.product');
+            if (productEls.length === 0) break;
 
-            if (productLinks.length === 0) break;
+            productEls.each((_, el) => {
+                const $el    = $(el);
+                const href   = $el.find('a').first().attr('href') ?? '';
+                const thumb  = $el.find('img').first().attr('src') ?? '';
+                const name   = $el.find('.woocommerce-loop-product__title, h3').first().text().trim();
 
-            productLinks.forEach(l => urls.add(l));
-            console.log(`    → ${productLinks.length} ürün bulundu (toplam: ${urls.size})`);
+                const siteSku = extractSiteSku(href);
+                if (!siteSku || !thumb) return;
+
+                const originalUrl = toOriginalUrl(thumb);
+                if (!items.has(siteSku)) {
+                    items.set(siteSku, { siteSku, originalUrl, thumbUrl: thumb, name });
+                }
+            });
 
             // Sonraki sayfa var mı?
             const hasNext = $('a.next.page-numbers').length > 0;
             if (!hasNext) break;
 
             page++;
-            await sleep(600);
+            await sleep(400);
         } catch {
-            console.error(`  [Shop] Sayfa ${page} hatası, durduruluyor.`);
+            console.error(`\n  [Shop] Sayfa ${page} hatası, durduruluyor.`);
             break;
         }
     }
 
-    return [...urls];
-}
-
-// ── Ürün detay sayfasından veri çek ─────────────────────────────────────────
-async function scrapeProductDetail(url: string): Promise<CiftelProduct | null> {
-    try {
-        const { data } = await http.get(url, { validateStatus: () => true });
-        const $ = cheerio.load(data);
-
-        const name = $('h1.product_title').text().trim();
-        const sku  = $('.sku').text().trim();
-
-        // Yüksek çözünürlüklü görsel: data-large_image varsa onu al
-        const imgEl = $('.woocommerce-product-gallery__image img').first();
-        const imageUrl =
-            imgEl.attr('data-large_image') ||
-            imgEl.attr('src') || '';
-
-        if (!name || !imageUrl) return null;
-
-        return { url, imageUrl, name, sku };
-    } catch {
-        return null;
-    }
+    console.log(`\n  [Shop] Tamamlandı: ${items.size} unique ürün, ${page} sayfa`);
+    return [...items.values()];
 }
 
 // ── Görsel indir, WebP dönüştür, watermark ekle ───────────────────────────────
-async function downloadAndProcess(imageUrl: string, filename: string): Promise<string | null> {
-    const outputPath = path.join(IMAGES_DIR, `${filename}.webp`);
+async function downloadAndProcess(imageUrl: string, sku: string): Promise<string | null> {
+    const safeSku    = sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const outputPath = path.join(IMAGES_DIR, `${safeSku}.webp`);
 
     try {
         const { data } = await http.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
@@ -198,13 +142,17 @@ async function downloadAndProcess(imageUrl: string, filename: string): Promise<s
         let pipeline = sharp(buf).resize(800, null, { withoutEnlargement: true });
 
         try {
-            const wmBuf = await fs.readFile(WATERMARK);
-            const wmMeta = await sharp(wmBuf).metadata();
-            const wmWidth = Math.min(wmMeta.width ?? 200, 200);
+            const wmBuf     = await fs.readFile(WATERMARK);
+            const wmMeta    = await sharp(wmBuf).metadata();
+            const wmWidth   = Math.min(wmMeta.width ?? 200, 180);
             const wmResized = await sharp(wmBuf).resize(wmWidth).toBuffer();
-            pipeline = pipeline.composite([{ input: wmResized, gravity: 'southeast', blend: 'over' }]) as typeof pipeline;
+            pipeline = pipeline.composite([{
+                input:   wmResized,
+                gravity: 'southeast',
+                blend:   'over',
+            }]) as typeof pipeline;
         } catch {
-            // Watermark dosyası yoksa suskunca devam et
+            // Watermark dosyası yoksa suskunca devam
         }
 
         await pipeline.webp({ quality: 85 }).toFile(outputPath);
@@ -214,18 +162,18 @@ async function downloadAndProcess(imageUrl: string, filename: string): Promise<s
     }
 }
 
-// ── Supabase Storage'a yükle ─────────────────────────────────────────────────
+// ── Supabase Storage'a yükle, public URL döndür ───────────────────────────────
 async function uploadToStorage(localPath: string, sku: string): Promise<string | null> {
-    const safeSku   = sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const safeSku     = sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
     const storagePath = `products/${safeSku}.webp`;
 
     try {
         const buf = await fs.readFile(localPath);
         const { error } = await supabase.storage.from(BUCKET).upload(storagePath, buf, {
-            upsert: true,
+            upsert:      true,
             contentType: 'image/webp',
         });
-        if (error) { console.error(`  [Storage] ${sku}: ${error.message}`); return null; }
+        if (error) { console.error(`\n  [Storage] ${sku}: ${error.message}`); return null; }
 
         const { data } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
         return data.publicUrl;
@@ -234,105 +182,110 @@ async function uploadToStorage(localPath: string, sku: string): Promise<string |
     }
 }
 
-// ── Ana akış ─────────────────────────────────────────────────────────────────
+// ── Ana akış ──────────────────────────────────────────────────────────────────
 async function main() {
-    console.log('━━━ ÇİFTEL GÖRSEL SCRAPER ━━━');
+    console.log('━━━ ÇİFTEL GÖRSEL SCRAPER v2 ━━━');
     if (DRY_RUN) console.log('  ⚠  DRY-RUN — Storage/DB\'ye yazılmıyor\n');
 
     await fs.mkdir(IMAGES_DIR, { recursive: true });
 
-    // 1. DB'den ÇİFTEL ürünlerini çek
-    console.log('[DB] ÇİFTEL ürünleri çekiliyor...');
+    // 1. Shop'tan tüm ürünleri topla
+    console.log('[Adım 1] ciftel.com.tr/shop/ taranıyor...');
+    const siteItems = await collectAllSiteItems();
+
+    if (LIMIT) {
+        console.log(`[Limit] İlk ${LIMIT} ürün işlenecek`);
+    }
+
+    const toProcess = LIMIT ? siteItems.slice(0, LIMIT) : siteItems;
+    console.log(`\n[Adım 2] ${toProcess.length} ürün işlenecek\n`);
+
+    // 2. DB'den ÇİFTEL ürünlerini çek (image_url boş olanlar)
     const { data: dbProducts } = await supabase
         .from('products')
         .select('id, sku, name, image_url')
-        .eq("meta->>source", 'ciftel_2026')
-        .is('deleted_at', null);
+        .eq('meta->>source', 'ciftel_2026')
+        .is('deleted_at', null)
+        .is('image_url', null); // sadece görseli olmayanlar
 
-    const products = dbProducts ?? [];
-    console.log(`[DB] ${products.length} ÇİFTEL ürünü bulundu\n`);
-
-    // 2. ÇİFTEL sitesinden tüm ürün URL'lerini topla
-    console.log('[Scrape] ÇİFTEL shop taranıyor...');
-    const productUrls = await scrapeAllProductUrls();
-    console.log(`[Scrape] ${productUrls.length} ürün URL'si bulundu\n`);
-
-    // 3. Her URL'den detay çek (rate limit: 800ms arası)
-    console.log('[Scrape] Detay sayfaları işleniyor...');
-    const scraped: CiftelProduct[] = [];
-    const urlsToProcess = LIMIT ? productUrls.slice(0, LIMIT) : productUrls;
-
-    for (let i = 0; i < urlsToProcess.length; i++) {
-        const detail = await scrapeProductDetail(urlsToProcess[i]);
-        if (detail) {
-            scraped.push(detail);
-            process.stdout.write(`\r  [${i + 1}/${urlsToProcess.length}] ${detail.name.substring(0, 50)}`);
-        }
-        await sleep(500);
+    const dbMap = new Map<string, { id: string; name: string }>();
+    for (const p of dbProducts ?? []) {
+        dbMap.set(p.sku, { id: p.id, name: p.name });
     }
-    console.log(`\n[Scrape] ${scraped.length} ürün detayı alındı\n`);
+    console.log(`[DB] ${dbMap.size} ÇİFTEL ürünü görsel bekliyor\n`);
 
-    // 4. DB ürünleriyle fuzzy eşleştir
+    // 3. Her site ürünü için işle
+    const log: { sku: string; status: string; url?: string }[] = [];
     let matched = 0, skipped = 0, errors = 0;
-    const unmatched: { sku: string; name: string }[] = [];
 
-    for (const dbProd of products) {
-        // Daha önce görseli varsa atla
-        if (dbProd.image_url) { skipped++; continue; }
+    for (let i = 0; i < toProcess.length; i++) {
+        const item = toProcess[i];
+        const dbProd = dbMap.get(item.siteSku);
 
-        // En iyi eşi bul — boyut + tip + token kombinasyonu
-        let bestItem: CiftelProduct | null = null;
-        let bestScore = 0;
-
-        for (const item of scraped) {
-            const score = combinedScore(dbProd.name, item.name);
-            if (score >= 0.55 && score > bestScore) {
-                bestScore = score;
-                bestItem  = item;
-            }
-        }
-
-        if (!bestItem) {
-            unmatched.push({ sku: dbProd.sku, name: dbProd.name });
+        if (!dbProd) {
+            // DB'de bu SKU yok veya zaten görseli var
+            skipped++;
             continue;
         }
 
-        console.log(`  ✓ ${dbProd.sku} → "${bestItem.name}" (skor: ${bestScore.toFixed(2)})`);
+        process.stdout.write(`\r  [${i + 1}/${toProcess.length}] SKU: ${item.siteSku} — ${item.name.substring(0, 40)}`);
 
-        if (DRY_RUN) { matched++; continue; }
+        if (DRY_RUN) {
+            console.log(`\n  ✓ [DRY] ${item.siteSku} → ${item.originalUrl}`);
+            log.push({ sku: item.siteSku, status: 'dry-run', url: item.originalUrl });
+            matched++;
+            continue;
+        }
 
-        // 5. Görsel indir + işle
-        const safeName   = dbProd.sku.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const localPath  = await downloadAndProcess(bestItem.imageUrl, safeName);
-        if (!localPath) { errors++; continue; }
+        // Görseli indir + işle
+        const localPath = await downloadAndProcess(item.originalUrl, item.siteSku);
+        if (!localPath) {
+            console.error(`\n  ✗ İndirme hatası: ${item.siteSku} (${item.originalUrl})`);
+            log.push({ sku: item.siteSku, status: 'download_error' });
+            errors++;
+            await sleep(300);
+            continue;
+        }
 
-        // 6. Storage'a yükle
-        const publicUrl = await uploadToStorage(localPath, dbProd.sku);
-        if (!publicUrl) { errors++; continue; }
+        // Storage'a yükle
+        const publicUrl = await uploadToStorage(localPath, item.siteSku);
+        if (!publicUrl) {
+            log.push({ sku: item.siteSku, status: 'upload_error' });
+            errors++;
+            await sleep(300);
+            continue;
+        }
 
-        // 7. DB'yi güncelle
+        // DB güncelle
         const { error } = await supabase
             .from('products')
             .update({ image_url: publicUrl })
             .eq('id', dbProd.id);
 
-        if (error) { console.error(`  [DB] ${dbProd.sku}: ${error.message}`); errors++; }
-        else matched++;
+        if (error) {
+            console.error(`\n  ✗ DB hatası: ${item.siteSku}: ${error.message}`);
+            log.push({ sku: item.siteSku, status: 'db_error' });
+            errors++;
+        } else {
+            log.push({ sku: item.siteSku, status: 'ok', url: publicUrl });
+            matched++;
+        }
 
-        await sleep(200);
+        await sleep(150);
     }
 
-    // Eşleşemeyenleri yaz
-    await fs.writeFile(UNMATCHED_OUT, JSON.stringify(unmatched, null, 2), 'utf-8');
+    // Log kaydet
+    await fs.writeFile(LOG_FILE, JSON.stringify(log, null, 2), 'utf-8');
 
-    console.log('\n━━━ ÖZET ━━━');
+    console.log('\n\n━━━ ÖZET ━━━');
     console.table({
-        'Görsel Eklenen':  { Adet: matched },
-        'Zaten Görselli':  { Adet: skipped },
-        'Eşleşmeyen':      { Adet: unmatched.length },
-        'Hata':            { Adet: errors },
+        'Görsel Eklendi':   { Adet: matched },
+        'DB\'de Yok / Atlanan': { Adet: skipped },
+        'Hata':             { Adet: errors },
+        'Site Ürün Sayısı': { Adet: siteItems.length },
+        'DB Bekleyen':      { Adet: dbMap.size },
     });
-    console.log(`[Çıktı] ${UNMATCHED_OUT} yazıldı`);
+    console.log(`[Log] ${LOG_FILE} yazıldı`);
 }
 
 main().catch((err: unknown) => {

@@ -15,13 +15,14 @@ interface UseProductsOptions {
     search?: string;
     categoryId?: string;
     status?: string;
+    supplier?: string;
 }
 
-export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, status }: UseProductsOptions = {}) {
+export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, status, supplier }: UseProductsOptions = {}) {
     const supabase = createBrowserClient();
 
     return useQuery({
-        queryKey: ['products', page, pageSize, search, categoryId, status],
+        queryKey: ['products', page, pageSize, search, categoryId, status, supplier],
         staleTime: 60_000,
         queryFn: async () => {
             let query = supabase
@@ -40,6 +41,13 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
             }
             if (status && status !== 'all') {
                 query = query.eq('status', status);
+            }
+            if (supplier && supplier !== 'all') {
+                if (supplier === 'EMES') query = (query as any).ilike('meta->>source', '%emes%');
+                else if (supplier === 'CFT') query = (query as any).ilike('meta->>source', '%ciftel%');
+                else if (supplier === 'OSK') query = (query as any).ilike('meta->>source', '%oskar%');
+                else if (supplier === 'KAU') query = (query as any).ilike('meta->>source', '%kaucuk%');
+                else if (supplier === 'FAL') query = (query as any).ilike('meta->>source', '%falo%');
             }
 
             const from = (page - 1) * pageSize;

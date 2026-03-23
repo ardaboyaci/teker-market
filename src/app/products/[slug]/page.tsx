@@ -15,12 +15,9 @@ import { RelatedProducts } from "@/components/storefront/related-products"
 import { ProductStructuredData } from "@/components/storefront/product-structured-data"
 
 // Global Layout Components
-import { AnnouncementBar } from "@/components/storefront/announcement-bar"
-import { ContactBar } from "@/components/storefront/contact-bar"
 import { SearchAutocomplete } from "@/components/storefront/search-autocomplete"
 import { MegaMenu } from "@/components/storefront/mega-menu"
 import { MobileNavDrawer } from "@/components/storefront/mobile-nav-drawer"
-import { WhatsAppFAB } from "@/components/storefront/whatsapp-fab"
 import { TrustFooter } from "@/components/storefront/trust-footer"
 import { BreadcrumbNav } from "@/components/storefront/breadcrumb-nav"
 
@@ -108,10 +105,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
     return (
         <div className="min-h-screen bg-slate-50/50 font-sans flex flex-col">
-            {/* ── Top Bars ── */}
-            <AnnouncementBar />
-            <ContactBar />
-
             {/* ── Header ── */}
             <header className="bg-white border-b border-slate-200/60 sticky top-0 z-20">
                 <div className="max-w-[1600px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -215,7 +208,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
             {/* ── Footer ── */}
             <TrustFooter categories={categories || []} />
-            <WhatsAppFAB />
         </div>
     )
 }

@@ -2,16 +2,13 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, Package, ShoppingCart, Settings, LogOut, FileBox, Users, Menu, X } from "lucide-react"
+import { LayoutDashboard, Table2, Settings, LogOut, FileBox, Menu, X } from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
 import * as React from "react"
 
 const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Ürün Yönetimi', href: '/dashboard/products', icon: Package },
-    { name: 'Kategoriler', href: '/dashboard/categories', icon: FileBox },
-    { name: 'Siparişler', href: '/dashboard/orders', icon: ShoppingCart },
-    { name: 'Müşteriler', href: '/dashboard/customers', icon: Users },
+    { name: 'Ana Özet', href: '/dashboard', icon: LayoutDashboard },
+    { name: 'Ürün Kataloğu', href: '/dashboard/products', icon: Table2 },
     { name: 'Ayarlar', href: '/dashboard/settings', icon: Settings },
 ]
 

@@ -1,38 +1,44 @@
 @import "tailwindcss";
 
-/* ── Shadcn UI Theme (Tailwind v4 CSS-first API) ── */
+/* ── Font Tanımları ── */
 @theme {
-  --color-background: hsl(0 0% 100%);
-  --color-foreground: hsl(222.2 84% 4.9%);
+  --font-display: var(--font-display, 'Syne'), sans-serif;
+  --font-body: var(--font-body, 'DM Sans'), sans-serif;
 
-  --color-card: hsl(0 0% 100%);
-  --color-card-foreground: hsl(222.2 84% 4.9%);
+  /* ── Industrial Renk Paleti ── */
+  --color-background: #f8f7f4;
+  --color-foreground: #111111;
 
-  --color-popover: hsl(0 0% 100%);
-  --color-popover-foreground: hsl(222.2 84% 4.9%);
+  --color-card: #ffffff;
+  --color-card-foreground: #111111;
 
-  --color-primary: hsl(221.2 83.2% 53.3%);
-  --color-primary-foreground: hsl(210 40% 98%);
+  --color-popover: #ffffff;
+  --color-popover-foreground: #111111;
 
-  --color-secondary: hsl(210 40% 96.1%);
-  --color-secondary-foreground: hsl(222.2 47.4% 11.2%);
+  /* Primary: Turuncu/Amber — endüstriyel accent */
+  --color-primary: hsl(28 95% 44%);
+  --color-primary-foreground: #ffffff;
 
-  --color-muted: hsl(210 40% 96.1%);
-  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  --color-secondary: #f0ede8;
+  --color-secondary-foreground: #111111;
 
-  --color-accent: hsl(210 40% 96.1%);
-  --color-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --color-muted: #ede9e3;
+  --color-muted-foreground: #6b6560;
+
+  --color-accent: #111111;
+  --color-accent-foreground: #ffffff;
 
   --color-destructive: hsl(0 84.2% 60.2%);
   --color-destructive-foreground: hsl(210 40% 98%);
 
-  --color-border: hsl(214.3 31.8% 91.4%);
-  --color-input: hsl(214.3 31.8% 91.4%);
-  --color-ring: hsl(221.2 83.2% 53.3%);
+  --color-border: #e2ddd6;
+  --color-input: #e2ddd6;
+  --color-ring: hsl(28 95% 44%);
 
-  --radius-sm: calc(0.5rem - 4px);
-  --radius-md: calc(0.5rem - 2px);
-  --radius-lg: 0.5rem;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 }
 
 /* ── Base Styles ── */
@@ -45,32 +51,66 @@
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   font-feature-settings: "rlig" 1, "calt" 1;
 }
 
-/* Marquee Animation */
-@keyframes marquee {
-  0% {
-    transform: translateX(0);
-  }
+/* ── Dot Grid Arka Plan — endüstriyel doku ── */
+.bg-dot-grid {
+  background-image: radial-gradient(circle, rgba(0,0,0,0.08) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
 
-  100% {
-    transform: translateX(-50%);
-  }
+/* Açık dot-grid (beyaz/krem yüzeylerde) */
+.bg-dot-grid-light {
+  background-image: radial-gradient(circle, rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Tipografi ── */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+/* ── Animasyonlar ── */
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
 .animate-marquee {
   animation: marquee 30s linear infinite;
 }
 
-/* Hide scrollbar utility */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ── Scrollbar Gizle ── */
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

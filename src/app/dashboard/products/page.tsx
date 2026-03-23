@@ -40,11 +40,21 @@ const slugify = (value: string) => {
         .replace(/(^-|-$)/g, "")
 }
 
+const SUPPLIERS = [
+    { label: "Tümü", value: "all" },
+    { label: "EMES", value: "EMES" },
+    { label: "CFT", value: "CFT" },
+    { label: "OSK", value: "OSK" },
+    { label: "KAU", value: "KAU" },
+    { label: "FAL", value: "FAL" },
+]
+
 export default function ProductsPage() {
     const [page, setPage] = React.useState(1)
     const [search, setSearch] = React.useState("")
     const [categoryId, setCategoryId] = React.useState("all")
     const [status, setStatus] = React.useState("all")
+    const [supplier, setSupplier] = React.useState("all")
     const [createError, setCreateError] = React.useState("")
     const [createSuccess, setCreateSuccess] = React.useState("")
     const [newProduct, setNewProduct] = React.useState({
@@ -58,7 +68,7 @@ export default function ProductsPage() {
     const pageSize = 20
 
     const { data: categoriesData } = useCategories()
-    const { data, isLoading } = useProducts({ page, pageSize, search, categoryId, status })
+    const { data, isLoading } = useProducts({ page, pageSize, search, categoryId, status, supplier })
     const updateProduct = useUpdateProduct()
     const createProduct = useCreateProduct()
     const deleteProduct = useDeleteProduct()
@@ -148,11 +158,28 @@ export default function ProductsPage() {
         <div className="flex flex-col space-y-6">
             <div>
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight">Ürün Yönetimi</h1>
+                    <h1 className="text-2xl font-bold tracking-tight">Ürün Kataloğu</h1>
                     <p className="text-muted-foreground text-sm mt-1">
                         Ürün kataloğunuzu yönetin, stok durumunu izleyin ve fiyatları çift tıklayarak anında güncelleyin.
                     </p>
                 </div>
+            </div>
+
+            {/* Tedarikçi Filtre Çipleri */}
+            <div className="flex items-center gap-2 flex-wrap">
+                {SUPPLIERS.map((s) => (
+                    <button
+                        key={s.value}
+                        onClick={() => { setSupplier(s.value); setPage(1); }}
+                        className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                            supplier === s.value
+                                ? "bg-primary text-white border-primary shadow-sm"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                        }`}
+                    >
+                        {s.label}
+                    </button>
+                ))}
             </div>
 
             <Card className="border-slate-200/70 shadow-sm">
@@ -254,7 +281,7 @@ export default function ProductsPage() {
                 onPageChange={setPage}
                 onSearchChange={(val) => {
                     setSearch(val)
-                    setPage(1) // Yeni aramada sayfayı 1'e sıfırla
+                    setPage(1)
                 }}
                 categoryId={categoryId}
                 onCategoryChange={(val) => { setCategoryId(val); setPage(1); }}
@@ -262,6 +289,7 @@ export default function ProductsPage() {
                 onStatusChange={(val) => { setStatus(val); setPage(1); }}
                 categories={categoriesData || []}
                 isLoading={isLoading}
+                onDeleteProduct={handleDeleteProduct}
             />
         </div>
     )

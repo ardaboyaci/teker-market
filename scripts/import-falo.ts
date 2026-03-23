@@ -1,136 +1,97 @@
 /**
- * FALO MAKARA 2026 IMPORT
+ * FALO MAKARA ÜRÜN IMPORT
  *
- * FALO MAKARA 2026 sheet'inden ürünleri Supabase'e draft statüsüyle import eder.
- * Header row 2 (0-based), veri row 3+
- * col[0]=sku, col[1]=name, col[4]=price (sadece price > 1 olanlar)
+ * Excel yapısı: Header R2, veri R3+
+ * Col 0: Stok Kodu (SKU), Col 1: Stok İsmi (isim), Col 4: Satış Fiyatı-1
  *
  * Flags:
- *   --dry-run   DB'ye yazmadan sadece log
+ *   --dry-run   DB'ye yazmadan loglar
  *   --limit=N   İlk N ürünü işle
  */
-
 import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
 import dotenv from 'dotenv';
 import path from 'path';
-import XLSX from 'xlsx';
 
-dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const supabaseUrl        = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+);
 
-if (!supabaseUrl || !supabaseServiceKey) {
-    console.error('[Error] Supabase credentials eksik (.env.local)');
-    process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-const DRY_RUN  = process.argv.includes('--dry-run');
+const DRY_RUN = process.argv.includes('--dry-run');
 const limitArg = process.argv.find(a => a.startsWith('--limit='));
-const LIMIT    = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const LIMIT = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-const EXCEL_PATH = path.resolve(__dirname, '../2026 BÜTÜN LİSTELER 5.xlsx');
-
-function makeSlug(sku: string, name: string): string {
-    return (sku + '-' + name)
-        .toLowerCase()
-        .replace(/[ğ]/g, 'g').replace(/[ü]/g, 'u').replace(/[ş]/g, 's')
-        .replace(/[ı]/g, 'i').replace(/[ö]/g, 'o').replace(/[ç]/g, 'c')
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-}
-
-const usedSlugs = new Set<string>();
-function uniqueSlug(sku: string, name: string): string {
-    const base = makeSlug(sku, name);
-    if (!usedSlugs.has(base)) { usedSlugs.add(base); return base; }
-    let n = 2;
-    while (usedSlugs.has(`${base}-${n}`)) n++;
-    const slug = `${base}-${n}`;
-    usedSlugs.add(slug);
-    return slug;
-}
-
-interface Row { sku: string; name: string; price: number; }
-
-function loadRows(): { valid: Row[]; skipped: number } {
-    const wb = XLSX.readFile(EXCEL_PATH);
-    const ws = wb.Sheets['FALO MAKARA 2026'];
-    if (!ws) { console.error('[Excel] FALO MAKARA 2026 sheet bulunamadı'); process.exit(1); }
-
-    const data: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
-    const valid: Row[] = [];
-    let skipped = 0;
-
-    // Row 0-1 = başlık/boş, Row 2 = header, Row 3+ = veri
-    // col[0]=sku, col[1]=name, col[4]=Satış Fiyatı-1
-    // Placeholder satırlar: price = 1 — bunları atla (plan §1C'ye göre)
-    for (let i = 3; i < data.length; i++) {
-        const r = data[i];
-        const sku  = String(r[0] ?? '').trim();
-        const name = String(r[1] ?? '').trim();
-        const raw  = r[4];
-        const price = typeof raw === 'number' ? raw : parseFloat(String(raw).replace(',', '.'));
-
-        if (!sku || !name) { skipped++; continue; }
-        if (!price || price <= 1 || isNaN(price)) { skipped++; continue; } // price > 1 filtresi
-
-        valid.push({ sku, name, price });
-    }
-
-    return { valid, skipped };
-}
+const EXCEL_FILE = path.resolve(process.cwd(), '2026 BÜTÜN LİSTELER 5.xlsx');
+const SHEET_NAME = 'FALO MAKARA 2026';
 
 async function main() {
-    console.log('━━━ FALO MAKARA 2026 IMPORT ━━━');
-    if (DRY_RUN) console.log('  ⚠  DRY-RUN modu — DB\'ye yazılmıyor\n');
+    console.log('━━━ FALO MAKARA ÜRÜN IMPORT ━━━');
+    if (DRY_RUN) console.log('⚠  DRY-RUN — DB\'ye yazılmıyor\n');
 
-    const { valid, skipped } = loadRows();
-    console.log(`[Import] FALO MAKARA 2026 — ${valid.length + skipped} satır okundu`);
-    console.log(`[Validasyon] ${valid.length} geçerli | ${skipped} atlandı (placeholder + boş satırlar)\n`);
+    const wb = XLSX.readFile(EXCEL_FILE);
+    const ws = wb.Sheets[SHEET_NAME];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 }) as any[][];
 
-    let rows = LIMIT ? valid.slice(0, LIMIT) : valid;
-    if (LIMIT) console.log(`[Limit] --limit=${LIMIT} uygulandı\n`);
+    // Header R2'de, veriler R3'ten başlıyor
+    const products = rows.slice(3).filter(row => {
+        const sku = String(row[0] ?? '').trim();
+        const name = String(row[1] ?? '').trim();
+        return sku && name;
+    }).map(row => ({
+        sku: String(row[0]).trim(),
+        name: String(row[1]).trim(),
+        base_price: typeof row[4] === 'number' && row[4] > 0 ? Math.round(row[4] * 100) / 100 : null,
+    }));
 
-    const CHUNK = 20;
-    const totalChunks = Math.ceil(rows.length / CHUNK);
-    const importedAt  = new Date().toISOString();
-    let inserted = 0, errors = 0;
+    console.log(`[Excel] ${products.length} FALO ürünü okundu\n`);
+    const toProcess = LIMIT ? products.slice(0, LIMIT) : products;
 
-    for (let i = 0; i < rows.length; i += CHUNK) {
-        const chunk    = rows.slice(i, i + CHUNK);
-        const chunkNum = Math.floor(i / CHUNK) + 1;
-        console.log(`[Chunk ${chunkNum}/${totalChunks}] ${chunk.length} ürün upsert...`);
+    let inserted = 0, skipped = 0, errors = 0;
 
-        const payload = chunk.map(row => ({
-            sku:        row.sku,
-            name:       row.name,
-            slug:       uniqueSlug(row.sku, row.name),
-            base_price: row.price,
-            sale_price: row.price,
-            status:     'draft',
-            vat_rate:   20,
-            currency:   'TRY',
-            meta: { source: 'falo_2026', imported_at: importedAt },
-        }));
+    for (let i = 0; i < toProcess.length; i++) {
+        const p = toProcess[i];
+        process.stdout.write(`\r[${i + 1}/${toProcess.length}] ${p.sku.slice(0, 40)}...`);
+
+        const { count } = await supabase
+            .from('products')
+            .select('*', { count: 'exact', head: true })
+            .eq('sku', p.sku)
+            .is('deleted_at', null);
+
+        if ((count ?? 0) > 0) { skipped++; continue; }
 
         if (DRY_RUN) {
-            payload.forEach(p => console.log(`  [DRY] ${p.sku} — ${p.name} — ₺${p.sale_price}`));
-            inserted += chunk.length;
+            console.log(`\n  ✓ [DRY] ${p.sku} — ${p.name} — ₺${p.base_price ?? '?'}`);
+            inserted++;
             continue;
         }
 
-        const { error } = await supabase.from('products').upsert(payload, { onConflict: 'sku' });
-        if (error) { console.error(`  -> Chunk hatası: ${error.message}`); errors += chunk.length; }
-        else inserted += chunk.length;
-        await sleep(200);
+        const slug = p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+        const { error } = await supabase.from('products').insert({
+            sku: p.sku,
+            name: p.name,
+            slug: `falo-${slug}-${Date.now()}`,
+            base_price: p.base_price,
+            sale_price: p.base_price,
+            status: 'draft',
+            meta: { source: 'falo_2026', imported_at: new Date().toISOString() },
+        });
+
+        if (error) { console.error(`\n  ✗ ${p.sku}: ${error.message}`); errors++; }
+        else inserted++;
     }
 
-    console.log('\n━━━ ÖZET ━━━');
-    console.table({ 'Eklenen': { Adet: inserted }, 'Hata': { Adet: errors }, 'Atlanan': { Adet: skipped } });
+    console.log('\n\n━━━ ÖZET ━━━');
+    console.table({
+        'Eklendi': { Adet: inserted },
+        'Zaten vardı (atlandı)': { Adet: skipped },
+        'Hata': { Adet: errors },
+        'Toplam': { Adet: toProcess.length },
+    });
 }
 
-main().catch((err: unknown) => { if (err instanceof Error) console.error('[FATAL]', err.message); process.exit(1); });
+main().catch(err => { console.error('[Fatal]', err); process.exit(1); });

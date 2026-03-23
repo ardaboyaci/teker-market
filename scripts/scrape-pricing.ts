@@ -220,15 +220,57 @@ async function getCompetitorPrice(
             const { data } = await http.get(url, { validateStatus: () => true });
             const $ = cheerio.load(data);
             const results: { name: string; price: number }[] = [];
-            $('div.product-item').each((_, card) => {
+
+            // Fallback seçici zinciri — site yapısı değişirse sıradaki denenir
+            const CARD_SELECTORS = [
+                'div.product-item',
+                '.product-card',
+                '[class*="product-item"]',
+                'li.product',
+                '.col-sm-6',        // bootstrap grid ürün kartı
+            ];
+            const NAME_SELECTORS = [
+                '.product-title',
+                'h3',
+                'h2',
+                'a[title]',
+                '[class*="title"]',
+                '[class*="name"]',
+            ];
+            const PRICE_SELECTORS = [
+                'span.product-price',
+                '.product-price',
+                '.current-price',
+                '[class*="price"]',
+            ];
+
+            // En fazla sonuç döndüren kart seçiciyi bul
+            let $cards = $();
+            for (const sel of CARD_SELECTORS) {
+                const found = $(sel);
+                if (found.length > $cards.length) $cards = found;
+            }
+
+            $cards.each((_, card) => {
                 const $card = $(card);
-                const productName =
-                    $card.find('.product-title').first().text().trim() ||
-                    $card.find('a[title]').attr('title')?.trim() || '';
-                const priceRaw = $card.find('span.product-price').first().text().trim();
+
+                let productName = '';
+                for (const sel of NAME_SELECTORS) {
+                    const el = $card.find(sel).first();
+                    const txt = el.text().trim() || el.attr('title')?.trim() || '';
+                    if (txt.length > 3) { productName = txt; break; }
+                }
+
+                let priceRaw = '';
+                for (const sel of PRICE_SELECTORS) {
+                    const txt = $card.find(sel).first().text().trim();
+                    if (txt) { priceRaw = txt; break; }
+                }
+
                 const price = parsePrice(priceRaw);
                 if (productName && price) results.push({ name: productName, price });
             });
+
             return results;
         } catch {
             return [];
@@ -241,8 +283,10 @@ async function getCompetitorPrice(
     const ourDiameter      = extractDiameter(sku);
 
     // ── TIER 1: SKU Normalizasyonu ────────────────────────────────────────────
-    // Rakip ürün adında normalize SKU'muz geçiyor mu?
     const tier1Results = await scrapeEtekerlek(sku);
+    if (tier1Results.length === 0) {
+        console.log(`      [T1] e-tekerlek'ten 0 sonuç — seçici uyuşmazlığı olabilir`);
+    }
     for (const r of tier1Results) {
         const normalizedCompName = normalizeSku(r.name);
         if (normalizedCompName.includes(normalizedOurSku)) {
@@ -251,26 +295,40 @@ async function getCompetitorPrice(
     }
 
     // ── TIER 2: Özellik Doğrulamalı Geniş Arama ──────────────────────────────
-    // SKU'nun anlamlı parçalarını birleştir: "EA ABP 150" gibi
     const skuParts  = sku.trim().split(/\s+/);
-    // Orta token'ları at (01, 02 gibi seri numaraları), anlamsız kısa token
-    const meaningful = skuParts.filter(t => t.length >= 3 || /^\d{2,3}$/.test(t));
+    const meaningful = skuParts.filter(t => {
+        if (/^[a-zA-Z]{2,4}$/.test(t)) return true; // EA, EB, ABP gibi 2-4 harf kodları
+        if (/^\d{2,3}$/.test(t) && parseInt(t) > 30) return true; // çap değerleri (>30mm)
+        return false;
+    });
     const tier2Query = meaningful.join(' ');
 
-    if (tier2Query !== sku) await sleep(150); // rate limit
+    if (tier2Query !== sku) await sleep(150);
 
     const tier2Results = await scrapeEtekerlek(tier2Query);
     for (const r of tier2Results) {
-        // Zorunlu: çap eşleşmeli
-        if (!hasDiameterMatch(ourDiameter, r.name)) continue;
-        // Zorunlu: hareket tipi çelişmemeli
-        if (hasMovementConflict(ourMovement, r.name)) continue;
-        // Zorunlu: malzeme çelişmemeli
-        if (hasMaterialConflict(ourMaterial, r.name)) continue;
-        // Ek: en az %40 token örtüşmesi
-        if (tokenMatchScore(sku, r.name) < 0.4) continue;
-
+        if (!hasDiameterMatch(ourDiameter, r.name)) {
+            console.log(`      [T2 skip] çap uyuşmadı: "${r.name.slice(0, 50)}"`);
+            continue;
+        }
+        if (hasMovementConflict(ourMovement, r.name)) {
+            console.log(`      [T2 skip] hareket tipi çelişti: "${r.name.slice(0, 50)}"`);
+            continue;
+        }
+        if (hasMaterialConflict(ourMaterial, r.name)) {
+            console.log(`      [T2 skip] malzeme çelişti: "${r.name.slice(0, 50)}"`);
+            continue;
+        }
+        const score = tokenMatchScore(sku, r.name);
+        if (score < 0.4) {
+            console.log(`      [T2 skip] token skoru düşük (${(score * 100).toFixed(0)}%): "${r.name.slice(0, 50)}"`);
+            continue;
+        }
         return { price: r.price, matchType: 'tier2' };
+    }
+
+    if (tier1Results.length > 0 || tier2Results.length > 0) {
+        console.log(`      [miss] T1:${tier1Results.length} T2:${tier2Results.length} sonuç ama eşleşme yok`);
     }
 
     return null;

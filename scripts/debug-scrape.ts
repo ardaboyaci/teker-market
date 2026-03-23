@@ -7,7 +7,7 @@ import * as cheerio from 'cheerio';
 import https from 'https';
 import * as fs from 'fs';
 
-const TEST_SKU = '200x50'; // Basit, her iki sitede de bulunması muhtemel
+const TEST_SKU = 'EA 01 ABP 150';
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const http = axios.create({

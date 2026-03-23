@@ -1,6 +1,21 @@
 import type { Metadata } from "next";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { Syne, DM_Sans } from "next/font/google";
 import "./globals.css";
+
+const syne = Syne({
+    subsets: ["latin"],
+    variable: "--font-display",
+    weight: ["700", "800"],
+    display: "swap",
+});
+
+const dmSans = DM_Sans({
+    subsets: ["latin"],
+    variable: "--font-body",
+    weight: ["400", "500", "600"],
+    display: "swap",
+});
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://tekermarket.com.tr";
 
@@ -58,8 +73,8 @@ export default function RootLayout({
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="tr">
-            <body className="antialiased">
+        <html lang="tr" className={`${syne.variable} ${dmSans.variable}`}>
+            <body className="antialiased font-body">
                 <QueryProvider>{children}</QueryProvider>
             </body>
         </html>

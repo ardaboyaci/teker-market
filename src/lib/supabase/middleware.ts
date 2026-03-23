@@ -35,16 +35,20 @@ export async function updateSession(request: NextRequest) {
         data: { user },
     } = await supabase.auth.getUser()
 
-    // Şimdilik route koruması eklemiyoruz (Sadece altyapı kuruldu)
-    // if (
-    //   !user &&
-    //   !request.nextUrl.pathname.startsWith('/login') &&
-    //   !request.nextUrl.pathname.startsWith('/auth')
-    // ) {
-    //   const url = request.nextUrl.clone()
-    //   url.pathname = '/login'
-    //   return NextResponse.redirect(url)
-    // }
+    // Route koruması: /dashboard/* için auth zorunlu, / → /dashboard/products'a redirect
+    if (!user) {
+        if (request.nextUrl.pathname.startsWith('/dashboard')) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/login'
+            return NextResponse.redirect(url)
+        }
+    }
+
+    if (request.nextUrl.pathname === '/') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/dashboard/products'
+        return NextResponse.redirect(url)
+    }
 
     return supabaseResponse
 }
