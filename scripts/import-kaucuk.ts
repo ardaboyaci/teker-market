@@ -1,5 +1,5 @@
 /**
- * ZET IMPORT — Batch insert
+ * KAUÇUK TAKOZ IMPORT — Batch insert
  * Flags: --dry-run, --limit=N
  */
 import { createClient } from '@supabase/supabase-js';
@@ -15,28 +15,20 @@ const BATCH = 100;
 const EXCEL = path.resolve(process.cwd(), '2026 BÜTÜN LİSTELER 5.xlsx');
 
 async function main() {
-    console.log('━━━ ZET IMPORT ━━━');
+    console.log('━━━ KAUÇUK TAKOZ IMPORT ━━━');
     if (DRY_RUN) console.log('⚠  DRY-RUN\n');
 
     const rows = XLSX.utils.sheet_to_json<any[]>(
-        XLSX.readFile(EXCEL).Sheets['ZET'], { defval: '', header: 1 }
+        XLSX.readFile(EXCEL).Sheets['KAUÇUK TAKOZ'], { defval: '', header: 1 }
     ) as any[][];
 
-    let currentCategory = 'ZET Tekerlekler';
-    const all: { sku: string; price: number; category: string }[] = [];
-
-    for (const r of rows) {
-        const col0 = String(r[0] ?? '').trim();
-        const col1 = r[1];
-        if (!col0 && !col1) continue;
-        if (col0 && typeof col1 !== 'number' && col0 === col0.toUpperCase() && col0.length > 5 &&
-            !col0.includes('Fiyat') && !col0.includes('Zet') && !col0.includes('2025') && !col0.includes('2026')) {
-            currentCategory = col0; continue;
-        }
-        if (col0 && typeof col1 === 'number' && col1 > 0) {
-            all.push({ sku: col0, price: Math.round(col1 * 100) / 100, category: currentCategory });
-        }
-    }
+    const all = rows.slice(2).filter(r => String(r[0] ?? '').trim() && String(r[1] ?? '').trim()).map(r => ({
+        sku: String(r[0]).trim(),
+        name: String(r[1]).trim(),
+        base_price: typeof r[4] === 'number' && r[4] > 0 ? Math.round(Math.abs(r[4]) * 100) / 100 : null,
+        vat_rate: typeof r[5] === 'number' ? r[5] : 20,
+        barcode: String(r[6] ?? '').trim() || null,
+    }));
 
     const products = LIMIT ? all.slice(0, LIMIT) : all;
     console.log(`[Excel] ${products.length} ürün`);
@@ -59,13 +51,14 @@ async function main() {
         process.stdout.write(`\r  [${Math.min(i + BATCH, toInsert.length)}/${toInsert.length}]...`);
 
         const { error } = await supabase.from('products').upsert(batch.map(p => ({
-            sku: p.sku, name: p.sku,
-            slug: `zet-${p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-            base_price: p.price, sale_price: p.price,
-            vat_rate: 20, currency: 'TRY', quantity_on_hand: 50,
-            status: 'draft', tags: ['zet'],
-            attributes: { 'Kategori': p.category },
-            meta: { source: 'zet_2026', category: p.category, imported_at: now },
+            sku: p.sku, name: p.name,
+            slug: `kaucuk-${p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+            barcode: p.barcode,
+            base_price: p.base_price, sale_price: p.base_price,
+            vat_rate: p.vat_rate, currency: 'TRY', quantity_on_hand: 50,
+            status: 'draft', tags: ['kaucuk-takoz'],
+            attributes: { 'Ürün Tipi': 'Kauçuk Takoz' },
+            meta: { source: 'kaucuk_takoz_2026', imported_at: now },
         })));
 
         if (error) { console.error(`\n  ✗ ${error.message}`); errors += batch.length; }

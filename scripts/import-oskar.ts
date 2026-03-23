@@ -1,5 +1,5 @@
 /**
- * ZET IMPORT — Batch insert
+ * OSKAR 2026 IMPORT — Batch insert
  * Flags: --dry-run, --limit=N
  */
 import { createClient } from '@supabase/supabase-js';
@@ -15,26 +15,26 @@ const BATCH = 100;
 const EXCEL = path.resolve(process.cwd(), '2026 BÜTÜN LİSTELER 5.xlsx');
 
 async function main() {
-    console.log('━━━ ZET IMPORT ━━━');
+    console.log('━━━ OSKAR 2026 IMPORT ━━━');
     if (DRY_RUN) console.log('⚠  DRY-RUN\n');
 
     const rows = XLSX.utils.sheet_to_json<any[]>(
-        XLSX.readFile(EXCEL).Sheets['ZET'], { defval: '', header: 1 }
+        XLSX.readFile(EXCEL).Sheets['OSKAR2026'], { defval: '', header: 1 }
     ) as any[][];
 
-    let currentCategory = 'ZET Tekerlekler';
-    const all: { sku: string; price: number; category: string }[] = [];
+    let currentCategory = '';
+    const all: { sku: string; name: string; base_price: number | null; ambalaj: string; category: string }[] = [];
 
-    for (const r of rows) {
-        const col0 = String(r[0] ?? '').trim();
-        const col1 = r[1];
-        if (!col0 && !col1) continue;
-        if (col0 && typeof col1 !== 'number' && col0 === col0.toUpperCase() && col0.length > 5 &&
-            !col0.includes('Fiyat') && !col0.includes('Zet') && !col0.includes('2025') && !col0.includes('2026')) {
-            currentCategory = col0; continue;
-        }
-        if (col0 && typeof col1 === 'number' && col1 > 0) {
-            all.push({ sku: col0, price: Math.round(col1 * 100) / 100, category: currentCategory });
+    for (let i = 9; i < rows.length; i++) {
+        const r = rows[i];
+        const col1 = String(r[1] ?? '').trim();
+        const col2 = String(r[2] ?? '').trim();
+        const col4 = r[4];
+        if (!col1 && !col2) continue;
+        // Kategori satırı
+        if (!col1 && col2 && col2 === col2.toUpperCase() && typeof col4 !== 'number') { currentCategory = col2; continue; }
+        if (col1 && typeof col4 === 'number' && col4 > 0) {
+            all.push({ sku: `OSKAR-${col1}`, name: col2 || col1, base_price: Math.round(col4 * 100) / 100, ambalaj: String(r[3] ?? '').trim(), category: currentCategory });
         }
     }
 
@@ -59,13 +59,13 @@ async function main() {
         process.stdout.write(`\r  [${Math.min(i + BATCH, toInsert.length)}/${toInsert.length}]...`);
 
         const { error } = await supabase.from('products').upsert(batch.map(p => ({
-            sku: p.sku, name: p.sku,
-            slug: `zet-${p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-            base_price: p.price, sale_price: p.price,
+            sku: p.sku, name: p.name,
+            slug: `oskar-${p.sku.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+            base_price: p.base_price, sale_price: p.base_price,
             vat_rate: 20, currency: 'TRY', quantity_on_hand: 50,
-            status: 'draft', tags: ['zet'],
-            attributes: { 'Kategori': p.category },
-            meta: { source: 'zet_2026', category: p.category, imported_at: now },
+            status: 'draft', tags: ['oskar'],
+            attributes: { ...(p.category ? { 'Kategori': p.category } : {}), ...(p.ambalaj ? { 'Ambalaj Adedi': p.ambalaj } : {}) },
+            meta: { source: 'oskar_2026', category: p.category, imported_at: now },
         })));
 
         if (error) { console.error(`\n  ✗ ${error.message}`); errors += batch.length; }
