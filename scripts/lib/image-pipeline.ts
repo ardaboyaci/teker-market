@@ -13,7 +13,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { SupabaseClient } from '@supabase/supabase-js';
 
-const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
+const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo-transparent.png');
 const BUCKET = 'product-media';
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
@@ -30,18 +30,15 @@ const http = axios.create({
 async function buildWatermark(targetWidth: number): Promise<Buffer | null> {
     try {
         const logoSize = Math.round(targetWidth * 0.22);
+        // Transparent PNG kullandığımız için beyaz piksel temizleme gerekmez
+        // Sadece opacity uygula (%40) ve boyutlandır
         const logoRaw = await sharp(WATERMARK_PATH).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
         const { data, info } = logoRaw;
         const pixels = new Uint8ClampedArray(data);
 
-        // Beyaz/açık arka planı şeffaf yap
+        // Sadece mevcut alpha değerini %40'a indir, beyaz temizleme yapma
         for (let i = 0; i < pixels.length; i += 4) {
-            const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-            if (brightness > 230) {
-                pixels[i + 3] = 0;
-            } else {
-                pixels[i + 3] = Math.round(pixels[i + 3] * 0.40);
-            }
+            pixels[i + 3] = Math.round(pixels[i + 3] * 0.40);
         }
 
         return sharp(Buffer.from(pixels), {
