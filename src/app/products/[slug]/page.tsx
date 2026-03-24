@@ -60,12 +60,22 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         .select("*")
         .order("name")
 
-    // Aktif kategori adı
-    let categoryName: string | null = null
-    if (product.category_id && categories) {
-        const cat = categories.find((c) => c.id === product.category_id)
-        if (cat) categoryName = cat.name
+    // Kategori parent chain — Breadcrumb için
+    const buildBreadcrumb = (categoryId: string | null) => {
+        if (!categoryId || !categories) return []
+        const chain: { id: string; name: string; slug: string }[] = []
+        let current = categories.find((c) => c.id === categoryId)
+        while (current) {
+            chain.unshift({ id: current.id, name: current.name, slug: current.slug })
+            current = current.parent_id
+                ? categories.find((c) => c.id === current!.parent_id)
+                : undefined
+        }
+        return chain
     }
+
+    const categoryChain = buildBreadcrumb(product.category_id)
+    const categoryName = categoryChain.length > 0 ? categoryChain[categoryChain.length - 1].name : null
 
     // Auth kontrolü — Madde #28
     const { data: { user } } = await supabase.auth.getUser()
@@ -87,16 +97,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     const images: string[] = []
     if (product.image_url) images.push(product.image_url)
 
-    // Breadcrumb
-    const breadcrumbItems = []
-    if (categoryName) {
-        const cat = categories?.find((c) => c.name === categoryName)
-        breadcrumbItems.push({
-            label: categoryName,
-            href: cat ? `/?category=${cat.slug}` : "/",
-        })
-    }
-    breadcrumbItems.push({ label: product.name })
+    // Breadcrumb — tam hiyerarşi
+    const breadcrumbItems = [
+        ...categoryChain.map((cat) => ({
+            label: cat.name,
+            href: `/products?category=${cat.slug}`,
+        })),
+        { label: product.name },
+    ]
 
     // PDF URL (metadata)
     const pdfUrl = product.attributes?.pdf_url || null
