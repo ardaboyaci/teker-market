@@ -5,7 +5,7 @@ import { ProductWithCategory, useRevisePrice } from "@/lib/hooks/use-products"
 import { InlineEditCell } from "./inline-edit-cell"
 import { formatCurrency } from "@/lib/utils/currency"
 import { Button } from "@/components/ui/button"
-import { Trash2, RefreshCw, CheckCircle2 } from "lucide-react"
+import { Trash2, RefreshCw, CheckCircle2, ImageOff, Check, X } from "lucide-react"
 import React from "react"
 
 // ── ReviseButton ──────────────────────────────────────────────────────────────
@@ -81,8 +81,44 @@ export function getProductColumns(
             enableSorting: false,
             enableHiding: false,
         },
+        {
+            id: "image",
+            header: "Görsel",
+            cell: ({ row }) => {
+                const img = (row.original as any).image_url
+                return img ? (
+                    <div className="w-10 h-10 rounded-md overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center">
+                        <img src={img} alt="" className="w-full h-full object-cover" />
+                    </div>
+                ) : (
+                    <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center text-slate-400">
+                        <ImageOff className="w-4 h-4" />
+                    </div>
+                )
+            },
+        },
         { accessorKey: "sku",  header: "SKU",     cell: ({ row }) => <span className="font-medium">{row.original.sku}</span> },
         { accessorKey: "name", header: "Ürün Adı" },
+        {
+            id: "description",
+            header: "Detay",
+            cell: ({ row }) => {
+                const hasDesc = !!(row.original as any).description
+                return (
+                    <div className="flex justify-center">
+                        {hasDesc ? (
+                            <div className="bg-emerald-100 text-emerald-600 rounded-full p-1" title="Açıklama Var">
+                                <Check className="w-3.5 h-3.5 font-bold" />
+                            </div>
+                        ) : (
+                            <div className="bg-red-100 text-red-500 rounded-full p-1" title="Açıklama Yok">
+                                <X className="w-3.5 h-3.5 font-bold" />
+                            </div>
+                        )}
+                    </div>
+                )
+            }
+        },
         { id: "category", accessorFn: (row) => row.category?.name || "-", header: "Kategori" },
         {
             accessorKey: "quantity_on_hand",

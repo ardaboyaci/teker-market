@@ -10,6 +10,7 @@ import {
     useUpdateProduct,
 } from "@/lib/hooks/use-products"
 import { ProductDataGrid } from "@/components/products/product-data-grid"
+import { ProductDetailPanel } from "@/components/products/product-detail-panel"
 import { getProductColumns } from "@/components/products/product-columns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,6 +48,10 @@ const SUPPLIERS = [
     { label: "OSK", value: "OSK" },
     { label: "KAU", value: "KAU" },
     { label: "FAL", value: "FAL" },
+    { label: "ZET", value: "ZET" },
+    { label: "EMS KUL", value: "EMES_KULP" },
+    { label: "YDK EMS", value: "YEDEK_EMES" },
+    { label: "MRT", value: "MERTSAN" },
 ]
 
 export default function ProductsPage() {
@@ -57,6 +62,7 @@ export default function ProductsPage() {
     const [supplier, setSupplier] = React.useState("all")
     const [createError, setCreateError] = React.useState("")
     const [createSuccess, setCreateSuccess] = React.useState("")
+    const [selectedProduct, setSelectedProduct] = React.useState<ProductWithCategory | null>(null)
     const [newProduct, setNewProduct] = React.useState({
         name: "",
         sku: "",
@@ -272,25 +278,40 @@ export default function ProductsPage() {
                 </CardContent>
             </Card>
 
-            <ProductDataGrid
-                columns={columns}
-                data={data?.products || []}
-                totalCount={data?.totalCount || 0}
-                page={page}
-                pageSize={pageSize}
-                onPageChange={setPage}
-                onSearchChange={(val) => {
-                    setSearch(val)
-                    setPage(1)
-                }}
-                categoryId={categoryId}
-                onCategoryChange={(val) => { setCategoryId(val); setPage(1); }}
-                status={status}
-                onStatusChange={(val) => { setStatus(val); setPage(1); }}
-                categories={categoriesData || []}
-                isLoading={isLoading}
-                onDeleteProduct={handleDeleteProduct}
-            />
+            <div className="flex gap-6 items-start">
+                <div className={`transition-all duration-300 ${selectedProduct ? "w-[55%] xl:w-[60%]" : "w-full"}`}>
+                    <ProductDataGrid
+                        columns={columns}
+                        data={data?.products || []}
+                        totalCount={data?.totalCount || 0}
+                        page={page}
+                        pageSize={pageSize}
+                        onPageChange={setPage}
+                        onSearchChange={(val) => {
+                            setSearch(val)
+                            setPage(1)
+                        }}
+                        categoryId={categoryId}
+                        onCategoryChange={(val) => { setCategoryId(val); setPage(1); }}
+                        status={status}
+                        onStatusChange={(val) => { setStatus(val); setPage(1); }}
+                        categories={categoriesData || []}
+                        isLoading={isLoading}
+                        onDeleteProduct={handleDeleteProduct}
+                        onRowClick={setSelectedProduct}
+                        selectedProductId={selectedProduct?.id}
+                    />
+                </div>
+
+                {selectedProduct && (
+                    <div className="w-[45%] xl:w-[40%] sticky top-6">
+                        <ProductDetailPanel 
+                            product={selectedProduct} 
+                            onClose={() => setSelectedProduct(null)}
+                        />
+                    </div>
+                )}
+            </div>
         </div>
     )
 }

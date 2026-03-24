@@ -48,6 +48,10 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
                 else if (supplier === 'OSK') query = (query as any).ilike('meta->>source', '%oskar%');
                 else if (supplier === 'KAU') query = (query as any).ilike('meta->>source', '%kaucuk%');
                 else if (supplier === 'FAL') query = (query as any).ilike('meta->>source', '%falo%');
+                else if (supplier === 'ZET') query = (query as any).ilike('meta->>source', '%zet%');
+                else if (supplier === 'EMES_KULP') query = (query as any).ilike('meta->>source', '%emes_kulp%');
+                else if (supplier === 'YEDEK_EMES') query = (query as any).ilike('meta->>source', '%yedek_emes%');
+                else if (supplier === 'MERTSAN') query = (query as any).ilike('meta->>source', '%mertsan%');
             }
 
             const from = (page - 1) * pageSize;

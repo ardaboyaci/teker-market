@@ -1,7 +1,10 @@
 import { createAdminClient } from "@/lib/supabase/admin"
 import { AlertBand } from "@/components/dashboard/alert-band"
 import { OperationalKPIs } from "@/components/dashboard/operational-kpis"
-import { QuickSkuSearch } from "@/components/dashboard/quick-sku-search"
+import { StockUpdateWidget } from "@/components/dashboard/stock-update-widget"
+import { LowStockPanel } from "@/components/dashboard/low-stock-panel"
+import { ImageCoverage } from "@/components/dashboard/image-coverage"
+import { DescriptionCoverage } from "@/components/dashboard/description-coverage"
 
 export const revalidate = 0
 
@@ -21,15 +24,11 @@ export default async function DashboardPage() {
             .select('id, status, quantity_on_hand, min_stock_level')
             .is('deleted_at', null),
 
-        // Kritik stok: quantity_on_hand <= min_stock_level (sıfır dahil)
+        // Kritik stok — aşağıda criticalRaw olarak ayrıca çekiluyor
         supabase
             .from('products')
-            .select('id, sku, name, quantity_on_hand, min_stock_level, meta')
-            .is('deleted_at', null)
-            .eq('status', 'active')
-            .lte('quantity_on_hand', supabase.rpc as any) // raw filter aşağıda
-            .order('quantity_on_hand', { ascending: true })
-            .limit(50),
+            .select('id')
+            .limit(1),
 
         // Tedarikçi bazlı dağılım
         supabase
@@ -146,9 +145,23 @@ export default async function DashboardPage() {
                 activeCount={activeCount}
             />
 
-            {/* Yeni Eklenecek: Hızlı Stok Arama Component'i */}
+            {/* Hızlı Stok Güncelleme Widget'ı */}
             <div className="pt-4">
-                <QuickSkuSearch />
+                <StockUpdateWidget />
+            </div>
+
+            {/* Yeni Eklenecek: Low Stock ve Coverage Panelleri */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 pt-2">
+                {/* Sol Taraf (2 Kolon) - Düşük Stok */}
+                <div className="xl:col-span-2">
+                    <LowStockPanel />
+                </div>
+                
+                {/* Sağ Taraf (1 Kolon) - Doluluk Oranları */}
+                <div className="space-y-6">
+                    <ImageCoverage />
+                    <DescriptionCoverage />
+                </div>
             </div>
 
         </div>

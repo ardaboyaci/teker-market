@@ -45,6 +45,8 @@ interface DataTableProps<TData, TValue> {
     categories: { id: string; name: string; slug: string | null }[]
     isLoading: boolean
     onDeleteProduct?: (product: ProductWithCategory) => void
+    onRowClick?: (product: TData) => void
+    selectedProductId?: string
 }
 
 export function ProductDataGrid<TData, TValue>({
@@ -62,6 +64,8 @@ export function ProductDataGrid<TData, TValue>({
     categories,
     isLoading,
     onDeleteProduct,
+    onRowClick,
+    selectedProductId,
 }: DataTableProps<TData, TValue>) {
     const [searchTerm, setSearchTerm] = React.useState("")
     const [rowSelection, setRowSelection] = React.useState({})
@@ -89,6 +93,9 @@ export function ProductDataGrid<TData, TValue>({
     })
 
     const selectedIds = Object.keys(rowSelection)
+
+    const currentPageDescCount = data.filter((row: any) => !!row.description).length
+    const currentPageImgCount = data.filter((row: any) => !!row.image_url).length
 
     return (
         <div className="flex flex-col space-y-4">
@@ -168,6 +175,18 @@ export function ProductDataGrid<TData, TValue>({
                 </div>
             </div>
 
+            {/* Stat bar */}
+            {!isLoading && data.length > 0 && viewMode === "table" && (
+                <div className="flex items-center text-xs font-medium text-slate-500 px-1">
+                    <span className="text-slate-700">{totalCount} toplam ürün</span>
+                    <span className="mx-2 text-slate-300">|</span>
+                    <span>Sayfadaki {data.length} üründe: </span>
+                    <span className="ml-1 text-emerald-600">{currentPageDescCount} açıklamalı</span>
+                    <span className="mx-2 text-slate-300">|</span>
+                    <span className="text-blue-600">{currentPageImgCount} görselli</span>
+                </div>
+            )}
+
             {/* Grid Modu */}
             {viewMode === "grid" ? (
                 <div>
@@ -233,7 +252,12 @@ export function ProductDataGrid<TData, TValue>({
                                             <TableRow
                                                 key={row.id}
                                                 data-state={row.getIsSelected() && "selected"}
-                                                className={`border-b border-slate-100 transition-colors dark:border-slate-800/60 ${rowColor}`}
+                                                onClick={() => onRowClick?.(row.original)}
+                                                className={`border-b border-slate-100 transition-colors dark:border-slate-800/60 cursor-pointer ${
+                                                    selectedProductId === (row.original as any).id
+                                                        ? "bg-blue-50/70 hover:bg-blue-50"
+                                                        : rowColor
+                                                }`}
                                             >
                                                 {row.getVisibleCells().map((cell) => (
                                                     <TableCell key={cell.id} className="py-1.5 px-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300">
