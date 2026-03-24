@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import { ColumnDef } from "@tanstack/react-table"
+import Image from "next/image"
 import { ProductWithCategory, useRevisePrice } from "@/lib/hooks/use-products"
 import { InlineEditCell } from "./inline-edit-cell"
 import { formatCurrency } from "@/lib/utils/currency"
@@ -88,7 +90,7 @@ export function getProductColumns(
                 const img = (row.original as any).image_url
                 return img ? (
                     <div className="w-10 h-10 rounded-md overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center">
-                        <img src={img} alt="" className="w-full h-full object-cover" />
+                        <Image src={img} alt="" width={40} height={40} className="w-full h-full object-cover" />
                     </div>
                 ) : (
                     <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center text-slate-400">

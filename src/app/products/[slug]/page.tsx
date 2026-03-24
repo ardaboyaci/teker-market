@@ -11,7 +11,7 @@ import { QuantityInput } from "@/components/storefront/quantity-input"
 import { WhatsAppOrderButton } from "@/components/storefront/whatsapp-order-button"
 import { AttributeTable } from "@/components/storefront/attribute-table"
 import { TechnicalDocButton } from "@/components/storefront/technical-doc-button"
-import { RelatedProducts } from "@/components/storefront/related-products"
+import { RelatedProducts, type RelatedProduct } from "@/components/storefront/related-products"
 import { ProductStructuredData } from "@/components/storefront/product-structured-data"
 
 // Global Layout Components
@@ -82,7 +82,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
     const isAuthenticated = !!user
 
     // İlgili ürünler — Madde #26
-    let relatedProducts: any[] = []
+    let relatedProducts: RelatedProduct[] = []
     if (product.category_id) {
         const { data } = await supabase
             .from("products")

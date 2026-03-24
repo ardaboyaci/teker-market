@@ -48,7 +48,7 @@ export async function LowStockPanel() {
                     const bgColor = isZero ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
                     const titleColor = isZero ? 'text-red-900' : 'text-amber-900'
                     const badgeBg = isZero ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                    const supplier = (p.meta as any)?.source || 'Bilinmiyor'
+                    const supplier = String((p.meta as Record<string,unknown>)?.source ?? 'Bilinmiyor')
                     const deficit = (p.min_stock_level ?? 0) - (p.quantity_on_hand ?? 0)
 
                     return (

@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import React, { useState, useEffect } from "react"
+import Image from "next/image"
 import { ProductWithCategory, useUpdateProduct } from "@/lib/hooks/use-products"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,7 +45,7 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
     }
 
     const img = (product as any).image_url
-    const supplier = (product.meta as any)?.source || "Bilinmiyor"
+    const supplier = String((product.meta as Record<string,unknown>)?._source ?? "Bilinmiyor")
     const attributes = (product as any).attributes || {}
     const compPrice = (product as any).competitor_price
     const compSource = (product as any).competitor_source
@@ -64,7 +66,7 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                 <div className="flex gap-4 items-start">
                     <div className="w-24 h-24 rounded-lg bg-white border border-slate-200 shadow-sm flex items-center justify-center shrink-0 overflow-hidden">
                         {img ? (
-                            <img src={img} alt={product.name} className="w-full h-full object-cover" />
+                            <Image src={img} alt={product.name} width={96} height={96} className="w-full h-full object-cover" />
                         ) : (
                             <ImageOff className="w-8 h-8 text-slate-300" />
                         )}

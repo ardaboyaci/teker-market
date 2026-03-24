@@ -13,10 +13,10 @@ export default function NotFound() {
                     404
                 </p>
                 <h1 className="text-center text-3xl font-extrabold tracking-tight text-slate-900">
-                    Aradiginiz sayfa bulunamadi
+                    Aradığınız sayfa bulunamadı
                 </h1>
                 <p className="mt-3 text-center text-sm leading-relaxed text-slate-500">
-                    Baglanti eski olabilir ya da adres yanlis girilmis olabilir.
+                    Bağlantı eski olabilir ya da adres yanlış girilmiş olabilir.
                 </p>
 
                 <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
@@ -25,13 +25,13 @@ export default function NotFound() {
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
                     >
                         <Home className="h-4 w-4" />
-                        Ana sayfaya don
+                        Ana sayfaya dön
                     </Link>
                     <Link
                         href="/dashboard"
                         className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                     >
-                        Admin paneline git
+                        Admin Paneline Git
                     </Link>
                 </div>
             </div>

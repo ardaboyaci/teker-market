@@ -2,7 +2,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { PackageSearch } from "lucide-react"
 
-interface RelatedProduct {
+export interface RelatedProduct {
     id: string
     name: string
     sku: string

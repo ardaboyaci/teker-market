@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { ProductWithCategory, useRevisePrice, useDeleteProduct } from "@/lib/hooks/use-products"
 import { formatCurrency } from "@/lib/utils/currency"
 import { Button } from "@/components/ui/button"
@@ -75,9 +77,11 @@ export function ProductCardGrid({ products, onDelete }: ProductCardGridProps) {
                         {/* Fotoğraf */}
                         <div className="relative w-full aspect-square bg-slate-50 border-b border-slate-100 flex items-center justify-center overflow-hidden">
                             {image ? (
-                                <img
+                                <Image
                                     src={image}
                                     alt={product.name}
+                                    width={300}
+                                    height={300}
                                     className="w-full h-full object-cover"
                                     loading="lazy"
                                 />

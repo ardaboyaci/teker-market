@@ -25,7 +25,7 @@ export async function ImageCoverage() {
     suppliers.forEach(s => stats[s] = { total: 0, withImage: 0 })
 
     for (const p of (products ?? [])) {
-        const source = (p.meta as any)?.source
+        const source = ((p.meta as Record<string,unknown>)?.source) as string | undefined
         if (source && stats[source]) {
             stats[source].total++
             if (p.image_url && p.image_url.trim() !== '') {

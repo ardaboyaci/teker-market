@@ -25,7 +25,7 @@ export async function DescriptionCoverage() {
     suppliers.forEach(s => stats[s] = { total: 0, withDescription: 0 })
 
     for (const p of (products ?? [])) {
-        const source = (p.meta as any)?.source
+        const source = ((p.meta as Record<string,unknown>)?.source) as string | undefined
         if (source && stats[source]) {
             stats[source].total++
             if (p.description && p.description.trim() !== '') {

@@ -79,7 +79,7 @@ export default function ProductsPage() {
     const createProduct = useCreateProduct()
     const deleteProduct = useDeleteProduct()
 
-    const handleUpdateProduct = React.useCallback((id: string, field: string, value: any) => {
+    const handleUpdateProduct = React.useCallback((id: string, field: string, value: unknown) => {
         if (!id) return;
         updateProduct.mutate({ id, updates: { [field]: value } });
     }, [updateProduct])
