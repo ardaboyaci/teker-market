@@ -87,7 +87,7 @@ export function getProductColumns(
             id: "image",
             header: "Görsel",
             cell: ({ row }) => {
-                const img = (row.original as any).image_url
+                const img = (row.original as any).image_url ?? (row.original as any).meta?.images?.[0] ?? null
                 return img ? (
                     <div className="w-10 h-10 rounded-md overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 flex items-center justify-center">
                         <Image src={img} alt="" width={40} height={40} className="w-full h-full object-cover" />

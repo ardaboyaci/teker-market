@@ -1,11 +1,9 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, CheckCircle2 } from "lucide-react"
 
 export async function LowStockPanel() {
     const supabase = createAdminClient()
 
-    // Supabase kolon-kolon karşılaştırmasını desteklemez,
-    // önce min_stock_level > 0 olanları çek, JS tarafında filtrele
     const { data: rawProducts, error } = await supabase
         .from('products')
         .select('id, sku, name, quantity_on_hand, min_stock_level, meta')
@@ -20,81 +18,74 @@ export async function LowStockPanel() {
         return null
     }
 
-    // JS tarafında: quantity_on_hand < min_stock_level
     const products = (rawProducts ?? [])
         .filter(p => (p.quantity_on_hand ?? 0) < (p.min_stock_level ?? 0))
         .slice(0, 50)
 
     if (products.length === 0) {
         return (
-            <div className="w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl">
-                <p className="text-slate-500 font-medium">Tüm stoklar yeterli seviyede.</p>
+            <div className="w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                <p className="text-slate-500 font-medium text-sm">Tüm stoklar yeterli seviyede.</p>
             </div>
         )
     }
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <h2 className="text-lg font-bold text-slate-800">
+                <h2 className="text-base font-bold text-slate-800">
                     Düşük Stok — <span className="text-amber-600">{products.length} ürün</span>
                 </h2>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {products.map(p => {
-                    const isZero = (p.quantity_on_hand ?? 0) === 0
-                    const bgColor = isZero ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'
-                    const titleColor = isZero ? 'text-red-900' : 'text-amber-900'
-                    const badgeBg = isZero ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                    const supplier = String((p.meta as Record<string,unknown>)?.source ?? 'Bilinmiyor')
-                    const deficit = (p.min_stock_level ?? 0) - (p.quantity_on_hand ?? 0)
+            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                {/* Tablo başlığı */}
+                <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="col-span-2">Tedarikçi</div>
+                    <div className="col-span-4">SKU / Ürün</div>
+                    <div className="col-span-2 text-center">Mevcut</div>
+                    <div className="col-span-2 text-center">Min.</div>
+                    <div className="col-span-2 text-center">Eksik</div>
+                </div>
 
-                    return (
-                        <div key={p.id} className={`p-4 rounded-xl border ${bgColor} flex flex-col gap-3 shadow-sm`}>
-                            <div className="flex flex-col">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                                    {p.sku} • {supplier.replace('_2026', '').toUpperCase()}
-                                </span>
-                                <h3 className={`text-sm font-semibold leading-tight line-clamp-2 ${titleColor}`}>
-                                    {p.name}
-                                </h3>
-                            </div>
+                <div className="divide-y divide-slate-100">
+                    {products.map(p => {
+                        const isZero = (p.quantity_on_hand ?? 0) === 0
+                        const deficit = (p.min_stock_level ?? 0) - (p.quantity_on_hand ?? 0)
+                        const supplier = String((p.meta as Record<string,unknown>)?.source ?? '—')
+                            .replace('_2026', '').toUpperCase()
 
-                            <div className="flex w-full items-center justify-between bg-white/60 p-2 rounded-lg gap-2">
-                                <div className="flex flex-col items-center flex-1">
-                                    <span className="text-[10px] text-slate-500 font-medium">Mevcut</span>
-                                    <span className={`text-lg font-black ${badgeBg} px-2 py-0.5 rounded-md mt-0.5`}>
+                        return (
+                            <div
+                                key={p.id}
+                                className={`grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-slate-50 transition-colors ${isZero ? 'bg-red-50/40' : ''}`}
+                            >
+                                <div className="col-span-2">
+                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                        {supplier}
+                                    </span>
+                                </div>
+                                <div className="col-span-4 min-w-0">
+                                    <div className="text-[10px] font-mono text-slate-400">{p.sku}</div>
+                                    <div className="text-xs font-semibold text-slate-700 truncate">{p.name}</div>
+                                </div>
+                                <div className="col-span-2 text-center">
+                                    <span className={`text-sm font-black ${isZero ? 'text-red-600' : 'text-amber-600'}`}>
                                         {p.quantity_on_hand ?? 0}
                                     </span>
                                 </div>
-                                <div className="flex flex-col items-center flex-1">
-                                    <span className="text-[10px] text-slate-500 font-medium">Minimum</span>
-                                    <span className="text-lg font-bold text-slate-700 px-2 py-0.5 mt-0.5">
-                                        {p.min_stock_level ?? 0}
-                                    </span>
+                                <div className="col-span-2 text-center">
+                                    <span className="text-sm text-slate-500">{p.min_stock_level ?? 0}</span>
                                 </div>
-                                <div className="flex flex-col items-center flex-1">
-                                    <span className="text-[10px] text-slate-500 font-medium">Eksik</span>
-                                    <span className="text-lg font-bold text-red-600 px-2 py-0.5 mt-0.5">
-                                        {deficit}
-                                    </span>
+                                <div className="col-span-2 text-center">
+                                    <span className="text-sm font-bold text-red-500">-{deficit}</span>
                                 </div>
                             </div>
-
-                            <button
-                                type="button"
-                                className="w-full mt-1 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold py-2 border border-slate-200 rounded-lg shadow-sm transition-colors"
-                                data-quick-stock-sku={p.sku}
-                                data-quick-stock-name={p.name}
-                                data-quick-stock-qty={p.quantity_on_hand ?? 0}
-                            >
-                                Hızlı Stok Gir
-                            </button>
-                        </div>
-                    )
-                })}
+                        )
+                    })}
+                </div>
             </div>
         </div>
     )

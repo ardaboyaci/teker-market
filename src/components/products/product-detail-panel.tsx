@@ -44,8 +44,8 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
         updateProduct.mutate({ id: product.id, updates })
     }
 
-    const img = (product as any).image_url
-    const supplier = String((product.meta as Record<string,unknown>)?._source ?? "Bilinmiyor")
+    const img = (product as any).image_url ?? (product.meta as any)?.images?.[0] ?? null
+    const supplier = String((product.meta as Record<string,unknown>)?.source ?? "Bilinmiyor")
     const attributes = (product as any).attributes || {}
     const compPrice = (product as any).competitor_price
     const compSource = (product as any).competitor_source
@@ -149,11 +149,11 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                             </div>
                             <p className="text-xs text-slate-500">TipTap kısıtlaması nedeniyle direkt HTML düzenleyici olarak ayarlıdır.</p>
                         </div>
-                        <Textarea 
+                        <Textarea
                             rows={8}
                             value={formData.description}
                             onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setFormData({...formData, description: e.target.value})}
-                            className="font-mono text-xs bg-slate-900 text-emerald-400 p-3 leading-relaxed border-slate-800 rounded-md focus-visible:ring-emerald-500"
+                            className="font-mono text-xs bg-slate-50 text-slate-800 p-3 leading-relaxed border-slate-200 rounded-md focus-visible:ring-primary"
                             placeholder="<p>Ürün açıklamasını buraya girin...</p>"
                         />
                     </div>
