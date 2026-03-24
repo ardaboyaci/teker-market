@@ -354,7 +354,7 @@ export function StockUpdateWidget() {
                                             {searchResults && searchResults.length > 0 ? (
                                                 <ul className="divide-y divide-slate-100">
                                                     {searchResults.map(result => {
-                                                        const thumb = (result.meta as any)?.images?.[0] ?? null
+                                                        const thumb = (result as any).image_url ?? (result.meta as any)?.images?.[0] ?? null
                                                         return (
                                                         <li
                                                             key={result.id}
@@ -393,7 +393,7 @@ export function StockUpdateWidget() {
                                     <div className="flex justify-between items-start mb-6 border-b border-slate-200 pb-4">
                                         <div className="flex items-start gap-4">
                                             {(() => {
-                                                const img = (selectedProduct.meta as any)?.images?.[0] ?? null
+                                                                const img = (selectedProduct as any).image_url ?? (selectedProduct.meta as any)?.images?.[0] ?? null
                                                 return (
                                                     <div className="w-16 h-16 rounded-lg bg-white flex-shrink-0 overflow-hidden border border-slate-200">
                                                         {img ? <Image src={img} alt={selectedProduct.name} width={64} height={64} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><PackageSearch className="w-6 h-6 text-slate-300" /></div>}

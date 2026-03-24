@@ -129,7 +129,7 @@ export function QuickSkuSearch() {
                             {searchResults && searchResults.length > 0 ? (
                                 <ul className="divide-y divide-slate-100">
                                     {searchResults.map(result => {
-                                        const thumb = (result.meta as any)?.images?.[0] ?? null
+                                        const thumb = (result as any).image_url ?? (result.meta as any)?.images?.[0] ?? null
                                         return (
                                         <li
                                             key={result.id}
@@ -181,7 +181,7 @@ export function QuickSkuSearch() {
                             <div className="flex items-start gap-3">
                                 {/* Büyük fotoğraf — görsel teyit */}
                                 {(() => {
-                                    const img = (selectedProduct.meta as any)?.images?.[0] ?? null
+                                    const img = (selectedProduct as any).image_url ?? (selectedProduct.meta as any)?.images?.[0] ?? null
                                     return (
                                         <div className="w-20 h-20 rounded-lg bg-white flex-shrink-0 overflow-hidden border border-slate-200">
                                             {img ? (

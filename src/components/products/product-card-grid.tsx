@@ -54,7 +54,7 @@ export function ProductCardGrid({ products, onDelete }: ProductCardGridProps) {
     return (
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             {products.map((product, i) => {
-                const image = (product.meta as any)?.images?.[0] ?? null
+                const image = (product as any).image_url ?? (product.meta as any)?.images?.[0] ?? null
                 const saleNum = product.sale_price ? parseFloat(String(product.sale_price)) : null
                 const compNum = (product as any).competitor_price ? parseFloat(String((product as any).competitor_price)) : null
                 const diff = saleNum !== null && compNum !== null
