@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import Image from "next/image"
 import Link from "next/link"
 import { PackageSearch, MessageCircle } from "lucide-react"

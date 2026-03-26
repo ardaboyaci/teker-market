@@ -180,7 +180,7 @@ export default function ProductsPage() {
                         className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                             supplier === s.value
                                 ? "bg-primary text-white border-primary shadow-sm"
-                                : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
+                                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500"
                         }`}
                     >
                         {s.label}
@@ -278,8 +278,8 @@ export default function ProductsPage() {
                 </CardContent>
             </Card>
 
-            <div className="flex gap-6 items-start">
-                <div className={`transition-all duration-300 ${selectedProduct ? "w-[55%] xl:w-[60%]" : "w-full"}`}>
+            <div className="flex flex-col lg:flex-row gap-6 items-start">
+                <div className={`transition-all duration-300 ${selectedProduct ? "w-full lg:w-[55%] xl:w-[60%]" : "w-full"}`}>
                     <ProductDataGrid
                         columns={columns}
                         data={data?.products || []}
@@ -304,7 +304,7 @@ export default function ProductsPage() {
                 </div>
 
                 {selectedProduct && (
-                    <div className="w-[45%] xl:w-[40%] sticky top-6">
+                    <div className="w-full lg:w-[45%] xl:w-[40%] lg:sticky top-6">
                         <ProductDetailPanel 
                             product={selectedProduct} 
                             onClose={() => setSelectedProduct(null)}

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 
@@ -38,7 +39,7 @@ export async function GET(req: NextRequest) {
         }
 
         // --- Ürün sayısını iste (opsiyonel) ---
-        let countMap: Record<string, number> = {}
+        const countMap: Record<string, number> = {}
         if (withProductCount && categories && categories.length > 0) {
             const ids = categories.map((c) => c.id)
             const { data: counts } = await supabase

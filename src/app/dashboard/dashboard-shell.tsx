@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { LayoutDashboard, Table2, Settings, LogOut, FileBox, Menu, X } from "lucide-react"
+import { LayoutDashboard, Table2, Settings, LogOut, Menu, X } from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
 import * as React from "react"
 

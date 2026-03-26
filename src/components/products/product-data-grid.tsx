@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import * as React from "react"
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select"
 import { BulkUpdateDialog } from "./bulk-update-dialog"
 import { ProductCardGrid } from "./product-card-grid"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { ProductWithCategory } from "@/lib/hooks/use-products"
 
 interface DataTableProps<TData, TValue> {
@@ -145,17 +147,17 @@ export function ProductDataGrid<TData, TValue>({
                     </Select>
 
                     {/* Grid / Table toggle */}
-                    <div className="flex items-center rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
                         <button
                             onClick={() => setViewMode("table")}
-                            className={`p-2 transition-colors ${viewMode === "table" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50"}`}
+                            className={`p-2 transition-colors ${viewMode === "table" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"}`}
                             title="Tablo görünümü"
                         >
                             <List className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => setViewMode("grid")}
-                            className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50"}`}
+                            className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"}`}
                             title="Kart grid görünümü"
                         >
                             <LayoutGrid className="w-4 h-4" />
@@ -191,9 +193,18 @@ export function ProductDataGrid<TData, TValue>({
             {viewMode === "grid" ? (
                 <div>
                     {isLoading ? (
-                        <div className="flex items-center justify-center h-48 gap-2 text-slate-400">
-                            <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-primary" />
-                            <span className="text-sm">Veriler yükleniyor...</span>
+                        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+                            {Array.from({ length: 10 }).map((_, i) => (
+                                <div key={i} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                    <Skeleton className="aspect-square w-full" />
+                                    <div className="p-3 space-y-2">
+                                        <Skeleton className="h-3 w-16" />
+                                        <Skeleton className="h-4 w-full" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                        <Skeleton className="h-5 w-20 mt-2" />
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     ) : (
                         <ProductCardGrid
@@ -233,14 +244,13 @@ export function ProductDataGrid<TData, TValue>({
                             </TableHeader>
                             <TableBody>
                                 {isLoading ? (
-                                    <TableRow>
-                                        <TableCell colSpan={columns.length} className="h-32 text-center text-slate-500">
-                                            <div className="flex flex-col items-center justify-center space-y-2">
-                                                <div className="h-6 w-6 animate-spin rounded-full border-b-2 border-primary"></div>
-                                                <span className="text-sm font-medium">Veriler yükleniyor...</span>
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
+                                    Array.from({ length: 8 }).map((_, i) => (
+                                        <TableRow key={i} className="border-b border-slate-100 dark:border-slate-800">
+                                            <TableCell colSpan={columns.length} className="py-2 px-4">
+                                                <Skeleton className="h-8 w-full" />
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
                                 ) : table.getRowModel().rows?.length ? (
                                     table.getRowModel().rows.map((row) => {
                                         const qty = (row.original as any).quantity_on_hand ?? null
