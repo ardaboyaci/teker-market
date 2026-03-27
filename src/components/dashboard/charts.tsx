@@ -1,124 +1,133 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import * as React from "react"
 import {
-    PieChart,
-    Pie,
-    Cell,
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
+    PieChart, Pie, Cell,
+    BarChart, Bar,
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatCurrency } from "@/lib/utils/currency"
+import { TrendingUp, PieChart as PieIcon } from "lucide-react"
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#a855f7', '#ec4899', '#14b8a6', '#f43f5e', '#8b5cf6']
-
-interface CategoryStat {
-    category_id: string | null
-    category_name: string | null
-    active_count: number | null
-    critical_count: number | null
-    product_count: number | null
-    total_stock: number | null
-    total_stock_value: string | null
+interface StockStat {
+    name: string
+    value: number
+    color: string
 }
 
-export function DashboardCharts({ data }: { data: CategoryStat[] }) {
-    // Format data for Pie Chart (Stok Dağılımı)
-    const pieData = data
-        .filter(item => item.total_stock && item.total_stock > 0)
-        .map(item => ({
-            name: item.category_name || "Diğer",
-            value: item.total_stock || 0
-        }))
-        .sort((a, b) => b.value - a.value)
-        .slice(0, 8) // Sadece en büyük 8 kategoriyi göster
+interface SupplierStat {
+    name: string
+    active: number
+    draft: number
+}
 
-    // Format data for Bar Chart (Kategori Bazlı Finansal Değer)
-    const barData = data
-        .filter(item => item.total_stock_value && Number(item.total_stock_value) > 0)
-        .map(item => ({
-            name: item.category_name || "Diğer",
-            deger: Number(item.total_stock_value || 0)
-        }))
-        .sort((a, b) => b.deger - a.deger)
-        .slice(0, 10)
+interface DashboardChartsProps {
+    stockStats: StockStat[]
+    supplierStats: SupplierStat[]
+}
+
+const SUPPLIER_LABELS: Record<string, string> = {
+    emes_2026:         'EMES',
+    emes_kulp_2026:    'EMES KULP',
+    yedek_emes_2026:   'YDK EMES',
+    zet_2026:          'ZET',
+    ciftel_2026:       'ÇİFTEL',
+    oskar_2026:        'OSKAR',
+    kaucuk_takoz_2026: 'KAUÇUK',
+    falo_2026:         'FALO',
+    mertsan_2026:      'MERTSAN',
+}
+
+export function DashboardCharts({ stockStats, supplierStats }: DashboardChartsProps) {
+    const total = stockStats.reduce((s, d) => s + d.value, 0)
 
     return (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Pasta — stok dağılımı */}
             <Card className="shadow-sm border-slate-200/60">
-                <CardHeader>
-                    <CardTitle className="text-lg font-semibold text-slate-800">Kategori Bazlı Stok Dağılımı</CardTitle>
+                <CardHeader className="pb-2 flex flex-row items-center gap-2">
+                    <PieIcon className="w-4 h-4 text-indigo-500" />
+                    <CardTitle className="text-sm font-bold text-slate-800">Stok Dağılımı</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="h-[350px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
+                    <div className="flex items-center gap-6">
+                        <ResponsiveContainer width={140} height={140}>
                             <PieChart>
                                 <Pie
-                                    data={pieData}
-                                    cx="50%"
-                                    cy="50%"
-                                    labelLine={false}
-                                    innerRadius={70}
-                                    outerRadius={110}
-                                    fill="#8884d8"
+                                    data={stockStats}
+                                    cx="50%" cy="50%"
+                                    innerRadius={38} outerRadius={60}
+                                    paddingAngle={3}
                                     dataKey="value"
-                                    nameKey="name"
-                                    label={({ name, percent }) => `${name} (${((percent || 0) * 100).toFixed(0)}%)`}
                                 >
-                                    {pieData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    {stockStats.map((entry, i) => (
+                                        <Cell key={i} fill={entry.color} />
                                     ))}
                                 </Pie>
-                                <Tooltip formatter={(value) => [`${value} adet`, 'Stok']} />
-                                <Legend />
+                                {/* @ts-expect-error recharts formatter tipi */}
+                                <Tooltip formatter={(v: number) => [`${v} ürün`]} />
                             </PieChart>
                         </ResponsiveContainer>
+                        <div className="flex-1 space-y-2.5">
+                            {stockStats.map((d) => (
+                                <div key={d.name} className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: d.color }} />
+                                        <span className="text-xs text-slate-600">{d.name}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-bold text-slate-800">{d.value.toLocaleString('tr')}</span>
+                                        <span className="text-[10px] text-slate-400 w-8 text-right">
+                                            %{total > 0 ? Math.round(d.value / total * 100) : 0}
+                                        </span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </CardContent>
             </Card>
 
+            {/* Bar — tedarikçi bazlı */}
             <Card className="shadow-sm border-slate-200/60">
-                <CardHeader>
-                    <CardTitle className="text-lg font-semibold text-slate-800">Kategori Bazlı Finansal Büyüklük</CardTitle>
+                <CardHeader className="pb-2 flex flex-row items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-blue-500" />
+                    <CardTitle className="text-sm font-bold text-slate-800">Tedarikçi Dağılımı</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div className="h-[350px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart
-                                data={barData}
-                                margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                <XAxis
-                                    dataKey="name"
-                                    tick={{ fontSize: 12 }}
-                                    angle={-45}
-                                    textAnchor="end"
-                                    interval={0}
-                                    height={80}
-                                />
-                                <YAxis
-                                    tickFormatter={(val) => `₺${(val / 1000).toFixed(0)}k`}
-                                    tick={{ fontSize: 12 }}
-                                />
-                                <Tooltip
-                                    formatter={(value: any) => [formatCurrency(Number(value || 0)), 'Toplam Değer']}
-                                    cursor={{ fill: 'rgba(241, 245, 249, 0.4)' }}
-                                />
-                                <Bar dataKey="deger" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
+                    <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={supplierStats} margin={{ top: 0, right: 0, bottom: 0, left: -20 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                            <XAxis
+                                dataKey="name"
+                                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <YAxis
+                                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <Tooltip
+                                contentStyle={{ fontSize: 11, borderRadius: 8, border: '1px solid #e2e8f0' }}
+                                formatter={((v: number, name: string) => [`${v.toLocaleString('tr')}`, name === 'active' ? 'Aktif' : 'Taslak']) as any}
+                            />
+                            <Legend
+                                iconType="circle"
+                                iconSize={8}
+                                formatter={(v) => <span style={{ fontSize: 10, color: '#64748b' }}>{v === 'active' ? 'Aktif' : 'Taslak'}</span>}
+                            />
+                            <Bar dataKey="active" name="active" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                            <Bar dataKey="draft"  name="draft"  fill="#f59e0b" radius={[3, 3, 0, 0]} maxBarSize={28} />
+                        </BarChart>
+                    </ResponsiveContainer>
                 </CardContent>
             </Card>
+
         </div>
     )
 }
