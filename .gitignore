@@ -4,3 +4,6 @@ scripts/output.log
 .next/
 .env.local
 tsconfig.tsbuildinfo
+
+# İç içe repo klonu engellemek için
+teker-market/
