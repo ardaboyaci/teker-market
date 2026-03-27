@@ -53,7 +53,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 const CIFTEL_BASE     = 'https://ciftel.com.tr';
 const BUCKET          = 'product-media';
-const WATERMARK       = path.resolve(__dirname, 'watermark-logo.png');
+const WATERMARK       = path.resolve(__dirname, 'watermark-logo-transparent.png');
 const OUTPUT_DIR      = path.resolve(__dirname, 'output');
 const IMAGES_DIR      = path.join(OUTPUT_DIR, 'ciftel-images');
 const LOG_FILE        = path.join(OUTPUT_DIR, 'ciftel-images-log.json');

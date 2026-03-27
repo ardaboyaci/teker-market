@@ -17,7 +17,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 const BUCKET = 'product-media';
 const DATA_FILE = path.resolve(__dirname, 'output/products.json');
-const LOGO_PATH = path.resolve(__dirname, 'watermark-logo.png');
+const LOGO_PATH = path.resolve(__dirname, 'watermark-logo-transparent.png');
 const CHUNK_SIZE = 20;
 const REPROCESS = process.argv.includes('--reprocess'); // mevcut dosyaların üzerine yaz
 

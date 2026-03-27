@@ -11,7 +11,7 @@ const OUTPUT_DIR = path.resolve(process.cwd(), 'scripts', 'output');
 const IMAGES_DIR = path.join(OUTPUT_DIR, 'images');
 const DATA_FILE = path.join(OUTPUT_DIR, 'products.json');
 const CHECKPOINT_FILE = path.join(OUTPUT_DIR, 'checkpoint.json');
-const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo.png');
+const WATERMARK_PATH = path.resolve(process.cwd(), 'scripts', 'watermark-logo-transparent.png');
 
 // ─── Checkpoint types & helpers ──────────────────────────────────────────────
 interface Checkpoint {
