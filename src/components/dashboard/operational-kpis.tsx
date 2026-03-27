@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Package, AlertTriangle, Clock, CheckCircle2 } from "lucide-react"
+import { Package, AlertTriangle, Clock, CheckCircle2, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface OperationalKPIsProps {
@@ -11,6 +11,7 @@ interface OperationalKPIsProps {
     criticalStockCount: number
     draftCount: number
     activeCount: number
+    inventoryValue?: number
 }
 
 interface KPICardProps {
@@ -55,6 +56,7 @@ export function OperationalKPIs({
     criticalStockCount,
     draftCount,
     activeCount,
+    inventoryValue,
 }: OperationalKPIsProps) {
     const cards = [
         {
@@ -79,13 +81,23 @@ export function OperationalKPIs({
             accent: "bg-red-50",
             urgent: zeroStockCount > 0,
         },
-        {
-            title: "Taslak Ürünler",
-            value: draftCount.toLocaleString('tr-TR'),
-            subtitle: "Yayınlanmayı bekliyor",
-            icon: <Clock className="w-5 h-5 text-amber-500" />,
-            accent: "bg-amber-50",
-        },
+        inventoryValue !== undefined
+            ? {
+                title: "Envanter Değeri",
+                value: inventoryValue >= 1_000_000
+                    ? `₺${(inventoryValue / 1_000_000).toFixed(1)}M`
+                    : `₺${(inventoryValue / 1_000).toFixed(0)}K`,
+                subtitle: "Mevcut stok × birim fiyat",
+                icon: <TrendingUp className="w-5 h-5 text-indigo-500" />,
+                accent: "bg-indigo-50",
+            }
+            : {
+                title: "Taslak Ürünler",
+                value: draftCount.toLocaleString('tr-TR'),
+                subtitle: "Yayınlanmayı bekliyor",
+                icon: <Clock className="w-5 h-5 text-amber-500" />,
+                accent: "bg-amber-50",
+            },
     ]
 
     return (

@@ -80,7 +80,8 @@ export function StockUpdateWidget() {
     })
 
     const updateStockMutation = useMutation({
-        mutationFn: async ({ id, newStock }: { id: string, newStock: number }) => {
+        mutationFn: async ({ id, newStock, oldStock }: { id: string, newStock: number, oldStock: number }) => {
+            // 1. Stoğu güncelle
             const { data, error } = await supabase
                 .from('products')
                 .update({ quantity_on_hand: newStock })
@@ -88,10 +89,22 @@ export function StockUpdateWidget() {
                 .select()
                 .single()
             if (error) throw error
+
+            // 2. stock_movements'a hareket kaydı yaz
+            const qty = newStock - oldStock
+            await supabase.from('stock_movements').insert({
+                product_id:      id,
+                movement_type:   qty >= 0 ? 'adjustment' : 'adjustment',
+                quantity:        qty,
+                quantity_before: oldStock,
+                quantity_after:  newStock,
+                reference_type:  'manual',
+                reference_note:  'Dashboard manuel güncelleme',
+            })
+
             return data
         },
         onSuccess: (data, variables) => {
-            // Update local recent updates logic
             if (selectedProduct) {
                 const newUpdate: RecentUpdate = {
                     id: Math.random().toString(36).substr(2, 9),
@@ -104,6 +117,7 @@ export function StockUpdateWidget() {
             }
             queryClient.invalidateQueries({ queryKey: ['quick-search'] })
             queryClient.invalidateQueries({ queryKey: ['products'] })
+            queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
             setSelectedProduct(null)
             setSearchTerm("")
             setNewQuantity("")
@@ -130,7 +144,7 @@ export function StockUpdateWidget() {
         const num = parseInt(newQuantity, 10)
         if (isNaN(num) || num < 0) return
 
-        updateStockMutation.mutate({ id: selectedProduct.id, newStock: num })
+        updateStockMutation.mutate({ id: selectedProduct.id, newStock: num, oldStock: selectedProduct.quantity_on_hand ?? 0 })
     }
 
     // --- Bulk Update Logic ---
@@ -252,10 +266,24 @@ export function StockUpdateWidget() {
             const chunk = validRows.slice(i, i + chunkSize)
             
             const promises = chunk.map(async (row) => {
+                const oldStock = row.product!.quantity_on_hand ?? 0
                 const { error } = await supabase
                     .from('products')
                     .update({ quantity_on_hand: row.newStock })
                     .eq('id', row.product!.id)
+
+                if (!error) {
+                    // Hareket kaydı yaz
+                    await supabase.from('stock_movements').insert({
+                        product_id:      row.product!.id,
+                        movement_type:   'adjustment',
+                        quantity:        row.newStock - oldStock,
+                        quantity_before: oldStock,
+                        quantity_after:  row.newStock,
+                        reference_type:  'bulk_update',
+                        reference_note:  'Toplu Excel/CSV güncelleme',
+                    })
+                }
                 
                 setBulkRows(prev => prev.map(r => 
                     r.sku === row.sku 

@@ -9,6 +9,7 @@ import { DraftApprovalQueue } from "@/components/dashboard/draft-approval-queue"
 import { SupplierBreakdown } from "@/components/dashboard/supplier-breakdown"
 import { DashboardCharts } from "@/components/dashboard/charts"
 import { CriticalStockTable } from "@/components/dashboard/critical-stock-table"
+import { ReorderPanel } from "@/components/dashboard/reorder-panel"
 
 export const revalidate = 0
 
@@ -90,6 +91,11 @@ export default async function DashboardPage() {
             supplier:         SUPPLIER_LABELS[(p.meta as Record<string, string>)?.source ?? ''] ?? null,
         }))
 
+    // ── Envanter değeri (Sprint 3) ────────────────────────────────────────────
+    const inventoryValue = products
+        .filter(p => p.status === 'active' && (p.quantity_on_hand ?? 0) > 0)
+        .reduce((sum, p) => sum + (p.quantity_on_hand ?? 0) * Number(p.sale_price ?? 0), 0)
+
     // ── Draft onay kuyruğu ────────────────────────────────────────────────────
     const draftQueue = products
         .filter(p => p.status === 'draft')
@@ -133,6 +139,7 @@ export default async function DashboardPage() {
                 criticalStockCount={criticalStockCount}
                 draftCount={draftCount}
                 activeCount={activeCount}
+                inventoryValue={inventoryValue}
             />
 
             {/* Grafikler */}
@@ -155,6 +162,7 @@ export default async function DashboardPage() {
                 {/* Sol — 2/3 genişlik */}
                 <div className="xl:col-span-2 space-y-6">
                     <DraftApprovalQueue products={draftQueue} />
+                    <ReorderPanel />
                     <LowStockPanel />
                 </div>
 
