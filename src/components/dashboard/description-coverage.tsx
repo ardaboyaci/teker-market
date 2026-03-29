@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { AlignLeft } from "lucide-react"
+import { AlignLeft, ArrowRight } from "lucide-react"
+import Link from "next/link"
 
 export async function DescriptionCoverage() {
     const supabase = createAdminClient()
@@ -54,11 +55,19 @@ export async function DescriptionCoverage() {
 
     return (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <div className="flex items-center gap-2 mb-4">
-                <AlignLeft className="w-5 h-5 text-fuchsia-500" />
-                <h3 className="text-sm font-bold text-slate-800">Açıklama Doluluk Oranı</h3>
+            <div className="flex items-center justify-between gap-2 mb-4">
+                <div className="flex items-center gap-2">
+                    <AlignLeft className="w-5 h-5 text-fuchsia-500" />
+                    <h3 className="text-sm font-bold text-slate-800">Açıklama Doluluk Oranı</h3>
+                </div>
+                <Link
+                    href="/dashboard/products?filter=no-description"
+                    className="flex items-center gap-1 text-xs text-fuchsia-600 hover:underline font-medium"
+                >
+                    Eksikleri Listele <ArrowRight className="w-3 h-3" />
+                </Link>
             </div>
-            
+
             <div className="space-y-4">
                 {validStats.map(stat => (
                     <div key={stat.supplier} className="flex flex-col gap-1">
@@ -69,8 +78,8 @@ export async function DescriptionCoverage() {
                             </span>
                         </div>
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div 
-                                className={`h-full rounded-full ${stat.colorClass} transition-all duration-500`} 
+                            <div
+                                className={`h-full rounded-full ${stat.colorClass} transition-all duration-500`}
                                 style={{ width: `${stat.percentage}%` }}
                             />
                         </div>

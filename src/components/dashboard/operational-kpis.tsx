@@ -87,7 +87,7 @@ export function OperationalKPIs({
                 value: inventoryValue >= 1_000_000
                     ? `₺${(inventoryValue / 1_000_000).toFixed(1)}M`
                     : `₺${(inventoryValue / 1_000).toFixed(0)}K`,
-                subtitle: "Mevcut stok × birim fiyat",
+                subtitle: "Mevcut stok × alış maliyeti",
                 icon: <TrendingUp className="w-5 h-5 text-indigo-500" />,
                 accent: "bg-indigo-50",
             }

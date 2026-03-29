@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-"use client"
-
 import { ColumnDef } from "@tanstack/react-table"
 import Image from "next/image"
 import { ProductWithCategory, useRevisePrice } from "@/lib/hooks/use-products"
@@ -57,7 +54,9 @@ function ReviseButton({ productId }: { productId: string }) {
 // ── Kolon tanımları ───────────────────────────────────────────────────────────
 export function getProductColumns(
     onUpdateProduct: (id: string, field: string, value: any) => void,
-    onDeleteProduct?: (product: ProductWithCategory) => void
+    onDeleteProduct?: (product: ProductWithCategory) => void,
+    pendingDeleteId?: string | null,
+    onConfirmDelete?: (id: string) => void,
 ): ColumnDef<ProductWithCategory>[] {
     return [
         {
@@ -148,7 +147,6 @@ export function getProductColumns(
                     onSave={(val) => onUpdateProduct(row.original.id, "sale_price", val)} />
             )
         },
-        // ── Rakip Fiyat — sadece dashboard, storefront'a geçirilmiyor ─────────
         {
             id: "competitor_price",
             header: () => (
@@ -221,13 +219,41 @@ export function getProductColumns(
         {
             id: "actions",
             header: "Aksiyon",
-            cell: ({ row }) => (
-                <Button type="button" variant="ghost" size="sm"
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={() => onDeleteProduct?.(row.original)}>
-                    <Trash2 className="h-4 w-4" /> Sil
-                </Button>
-            ),
+            cell: ({ row }) => {
+                const id = row.original.id
+                const isPending = pendingDeleteId === id
+
+                if (isPending) {
+                    return (
+                        <div className="flex items-center gap-1">
+                            <span className="text-xs text-slate-500">Emin misin?</span>
+                            <Button
+                                type="button" variant="ghost" size="sm"
+                                className="h-6 px-2 text-xs text-red-600 hover:bg-red-50 font-semibold"
+                                onClick={(e) => { e.stopPropagation(); onConfirmDelete?.(id) }}
+                            >
+                                Evet
+                            </Button>
+                            <Button
+                                type="button" variant="ghost" size="sm"
+                                className="h-6 px-2 text-xs text-slate-500 hover:bg-slate-100"
+                                onClick={(e) => { e.stopPropagation(); onDeleteProduct?.(null as any) }}
+                            >
+                                Hayır
+                            </Button>
+                        </div>
+                    )
+                }
+
+                return (
+                    <Button type="button" variant="ghost" size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={(e) => { e.stopPropagation(); onDeleteProduct?.(row.original) }}>
+                        <Trash2 className="h-4 w-4" /> Sil
+                    </Button>
+                )
+            },
         }
     ]
 }
+

@@ -1,92 +1,83 @@
 import { createAdminClient } from "@/lib/supabase/admin"
-import { AlertTriangle, CheckCircle2 } from "lucide-react"
+import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react"
+import Link from "next/link"
 
 export async function LowStockPanel() {
     const supabase = createAdminClient()
 
-    const { data: rawProducts, error } = await supabase
+    const { data: rawProducts } = await supabase
         .from('products')
         .select('id, sku, name, quantity_on_hand, min_stock_level, meta')
         .eq('status', 'active')
         .is('deleted_at', null)
         .gt('min_stock_level', 0)
         .order('quantity_on_hand', { ascending: true })
-        .limit(500)
+        .limit(5)
 
-    if (error) {
-        console.error("Error fetching low stock:", error)
-        return null
-    }
-
-    const products = (rawProducts ?? [])
-        .filter(p => (p.quantity_on_hand ?? 0) < (p.min_stock_level ?? 0))
-        .slice(0, 50)
+    const products = (rawProducts ?? []).filter(
+        p => (p.quantity_on_hand ?? 0) <= (p.min_stock_level ?? 0)
+    )
 
     if (products.length === 0) {
         return (
-            <div className="w-full p-8 text-center bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center gap-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                <p className="text-slate-500 font-medium text-sm">Tüm stoklar yeterli seviyede.</p>
+            <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 dark:border-green-900 px-4 py-3 text-sm text-green-700 dark:text-green-400">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>Kritik stok seviyesinde ürün yok.</span>
             </div>
         )
     }
 
     return (
-        <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <h2 className="text-base font-bold text-slate-800">
-                    Düşük Stok — <span className="text-amber-600">{products.length} ürün</span>
-                </h2>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-amber-200 dark:border-amber-900">
+                <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    <span className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                        Kritik Stok — Hızlı Bakış
+                    </span>
+                    <span className="text-xs bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded-full px-2 py-0.5 font-bold">
+                        {products.length}
+                    </span>
+                </div>
+                <Link
+                    href="#reorder-panel"
+                    className="flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400 hover:underline font-medium"
+                >
+                    Sipariş Planla <ArrowRight className="w-3 h-3" />
+                </Link>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                {/* Tablo başlığı */}
-                <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    <div className="col-span-2">Tedarikçi</div>
-                    <div className="col-span-4">SKU / Ürün</div>
-                    <div className="col-span-2 text-center">Mevcut</div>
-                    <div className="col-span-2 text-center">Min.</div>
-                    <div className="col-span-2 text-center">Eksik</div>
-                </div>
+            {/* Ürün listesi */}
+            <ul className="divide-y divide-amber-100 dark:divide-amber-900/50">
+                {products.map(p => {
+                    const qty = p.quantity_on_hand ?? 0
+                    const min = p.min_stock_level ?? 0
+                    const pct = min > 0 ? Math.round((qty / min) * 100) : 0
+                    const supplier = (p.meta as Record<string, string>)?.source ?? ''
 
-                <div className="divide-y divide-slate-100">
-                    {products.map(p => {
-                        const isZero = (p.quantity_on_hand ?? 0) === 0
-                        const deficit = (p.min_stock_level ?? 0) - (p.quantity_on_hand ?? 0)
-                        const supplier = String((p.meta as Record<string,unknown>)?.source ?? '—')
-                            .replace('_2026', '').toUpperCase()
-
-                        return (
-                            <div
-                                key={p.id}
-                                className={`grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-slate-50 transition-colors ${isZero ? 'bg-red-50/40' : ''}`}
-                            >
-                                <div className="col-span-2">
-                                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                        {supplier}
-                                    </span>
+                    return (
+                        <li key={p.id} className="flex items-center justify-between px-4 py-2.5 gap-3">
+                            <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">{p.name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">{p.sku}{supplier ? ` · ${supplier}` : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <div className="text-right">
+                                    <span className="text-sm font-bold text-red-600 dark:text-red-400">{qty}</span>
+                                    <span className="text-xs text-slate-400"> / {min}</span>
                                 </div>
-                                <div className="col-span-4 min-w-0">
-                                    <div className="text-[10px] font-mono text-slate-400">{p.sku}</div>
-                                    <div className="text-xs font-semibold text-slate-700 truncate">{p.name}</div>
-                                </div>
-                                <div className="col-span-2 text-center">
-                                    <span className={`text-sm font-black ${isZero ? 'text-red-600' : 'text-amber-600'}`}>
-                                        {p.quantity_on_hand ?? 0}
-                                    </span>
-                                </div>
-                                <div className="col-span-2 text-center">
-                                    <span className="text-sm text-slate-500">{p.min_stock_level ?? 0}</span>
-                                </div>
-                                <div className="col-span-2 text-center">
-                                    <span className="text-sm font-bold text-red-500">-{deficit}</span>
+                                <div className="w-16 h-1.5 rounded-full bg-amber-200 dark:bg-amber-900 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-red-500"
+                                        style={{ width: `${Math.min(pct, 100)}%` }}
+                                    />
                                 </div>
                             </div>
-                        )
-                    })}
-                </div>
-            </div>
+                        </li>
+                    )
+                })}
+            </ul>
         </div>
     )
 }

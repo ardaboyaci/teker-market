@@ -40,6 +40,7 @@ export function StockUpdateWidget() {
     const [debouncedTerm, setDebouncedTerm] = React.useState("")
     const [selectedProduct, setSelectedProduct] = React.useState<Product | null>(null)
     const [newQuantity, setNewQuantity] = React.useState<string>("")
+    const [note, setNote] = React.useState<string>("")
     const [recentUpdates, setRecentUpdates] = React.useState<RecentUpdate[]>([])
     
     const inputRef = React.useRef<HTMLInputElement>(null)
@@ -80,7 +81,7 @@ export function StockUpdateWidget() {
     })
 
     const updateStockMutation = useMutation({
-        mutationFn: async ({ id, newStock, oldStock }: { id: string, newStock: number, oldStock: number }) => {
+        mutationFn: async ({ id, newStock, oldStock, note }: { id: string, newStock: number, oldStock: number, note: string }) => {
             // 1. Stoğu güncelle
             const { data, error } = await supabase
                 .from('products')
@@ -92,14 +93,15 @@ export function StockUpdateWidget() {
 
             // 2. stock_movements'a hareket kaydı yaz
             const qty = newStock - oldStock
+            const movementType = qty > 0 ? 'in' : qty < 0 ? 'out' : 'adjustment'
             await supabase.from('stock_movements').insert({
                 product_id:      id,
-                movement_type:   qty >= 0 ? 'adjustment' : 'adjustment',
+                movement_type:   movementType,
                 quantity:        qty,
                 quantity_before: oldStock,
                 quantity_after:  newStock,
                 reference_type:  'manual',
-                reference_note:  'Dashboard manuel güncelleme',
+                reference_note:  note.trim() || 'Dashboard manuel güncelleme',
             })
 
             return data
@@ -121,6 +123,7 @@ export function StockUpdateWidget() {
             setSelectedProduct(null)
             setSearchTerm("")
             setNewQuantity("")
+            setNote("")
             setTimeout(() => inputRef.current?.focus(), 100)
         }
     })
@@ -144,7 +147,7 @@ export function StockUpdateWidget() {
         const num = parseInt(newQuantity, 10)
         if (isNaN(num) || num < 0) return
 
-        updateStockMutation.mutate({ id: selectedProduct.id, newStock: num, oldStock: selectedProduct.quantity_on_hand ?? 0 })
+        updateStockMutation.mutate({ id: selectedProduct.id, newStock: num, oldStock: selectedProduct.quantity_on_hand ?? 0, note })
     }
 
     // --- Bulk Update Logic ---
@@ -465,6 +468,15 @@ export function StockUpdateWidget() {
                                                     <Plus className="w-4 h-4 mr-1"/> 50
                                                 </Button>
                                             </div>
+                                        </div>
+                                        <div className="mt-2">
+                                            <Input
+                                                type="text"
+                                                value={note}
+                                                onChange={(e) => setNote(e.target.value)}
+                                                placeholder="Not (isteğe bağlı, ör: Yeni sevkiyat)"
+                                                className="h-10 text-sm bg-white border-slate-300 text-slate-700 placeholder:text-slate-400"
+                                            />
                                         </div>
                                         <div className="mt-2">
                                             <Button type="submit" disabled={updateStockMutation.isPending} className="w-full h-12 bg-primary hover:bg-primary/90 text-white font-bold text-lg shadow-sm">

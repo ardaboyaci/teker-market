@@ -31,7 +31,7 @@ export default async function DashboardPage() {
     // ── Tek sorguda tüm ürünler ───────────────────────────────────────────────
     const { data: allProducts } = await supabase
         .from('products')
-        .select('id, sku, name, status, quantity_on_hand, min_stock_level, sale_price, meta')
+        .select('id, sku, name, status, quantity_on_hand, min_stock_level, sale_price, cost_price, meta, created_at')
         .is('deleted_at', null)
 
     const products = allProducts ?? []
@@ -91,10 +91,10 @@ export default async function DashboardPage() {
             supplier:         SUPPLIER_LABELS[(p.meta as Record<string, string>)?.source ?? ''] ?? null,
         }))
 
-    // ── Envanter değeri (Sprint 3) ────────────────────────────────────────────
+    // ── Envanter değeri — alış maliyeti bazlı (cost_price) ──────────────────
     const inventoryValue = products
         .filter(p => p.status === 'active' && (p.quantity_on_hand ?? 0) > 0)
-        .reduce((sum, p) => sum + (p.quantity_on_hand ?? 0) * Number(p.sale_price ?? 0), 0)
+        .reduce((sum, p) => sum + (p.quantity_on_hand ?? 0) * Number((p as Record<string, unknown>).cost_price ?? 0), 0)
 
     // ── Draft onay kuyruğu ────────────────────────────────────────────────────
     const draftQueue = products
@@ -106,7 +106,7 @@ export default async function DashboardPage() {
             name:       p.name,
             sale_price: p.sale_price ?? null,
             supplier:   (p.meta as Record<string, string>)?.source ?? null,
-            created_at: '',
+            created_at: p.created_at ?? '',
         }))
 
     return (

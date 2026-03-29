@@ -8,8 +8,24 @@ interface AlertBandProps {
     criticalStockCount: number
 }
 
+const DISMISS_KEY = "alert-band-dismissed-until"
+
 export function AlertBand({ zeroStockCount, criticalStockCount }: AlertBandProps) {
     const [dismissed, setDismissed] = React.useState(false)
+
+    // localStorage'den dismiss durumunu oku (8 saatlik süre)
+    React.useEffect(() => {
+        const until = localStorage.getItem(DISMISS_KEY)
+        if (until && Date.now() < Number(until)) {
+            setDismissed(true)
+        }
+    }, [])
+
+    const handleDismiss = () => {
+        // 8 saat boyunca dismiss'i koru
+        localStorage.setItem(DISMISS_KEY, String(Date.now() + 8 * 60 * 60 * 1000))
+        setDismissed(true)
+    }
 
     if ((zeroStockCount === 0 && criticalStockCount === 0) || dismissed) return null
 
@@ -31,7 +47,7 @@ export function AlertBand({ zeroStockCount, criticalStockCount }: AlertBandProps
                 </span>
             </div>
             <button
-                onClick={() => setDismissed(true)}
+                onClick={handleDismiss}
                 className="p-1 rounded hover:bg-red-500 transition-colors flex-shrink-0"
                 aria-label="Kapat"
             >

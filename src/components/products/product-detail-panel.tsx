@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { ImageOff, X, Save, Box, Tag, FileText } from "lucide-react"
+import { StockMovementHistory } from "@/components/dashboard/stock-movement-history"
 
 export function ProductDetailPanel({ product, onClose }: { product: ProductWithCategory, onClose: () => void }) {
     const updateProduct = useUpdateProduct()
@@ -181,6 +182,9 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                             <div className="text-sm text-slate-400 dark:text-slate-500 italic">Özellik tanımlanmamış.</div>
                         )}
                     </div>
+
+                    {/* Stock Movement History */}
+                    <StockMovementHistory productId={product.id} productName={product.name} />
                 </div>
             </CardContent>
             

@@ -44,8 +44,25 @@ export function CriticalStockTable({ products }: CriticalStockTableProps) {
 
     const handleUpdateQty = async (id: string, newQty: number) => {
         setUpdating(id)
+        const product = products.find(p => p.id === id)
+        const oldQty = product?.quantity_on_hand ?? 0
+
         await supabase.from('products').update({ quantity_on_hand: newQty }).eq('id', id)
+
+        // stock_movements kaydı
+        const qty = newQty - oldQty
+        await supabase.from('stock_movements').insert({
+            product_id:      id,
+            movement_type:   qty > 0 ? 'in' : qty < 0 ? 'out' : 'adjustment',
+            quantity:        qty,
+            quantity_before: oldQty,
+            quantity_after:  newQty,
+            reference_type:  'manual',
+            reference_note:  'Kritik stok tablosundan güncelleme',
+        })
+
         queryClient.invalidateQueries({ queryKey: ['dashboard-critical'] })
+        queryClient.invalidateQueries({ queryKey: ['stock-movements'] })
         setUpdating(null)
     }
 

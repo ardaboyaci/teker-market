@@ -22,7 +22,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { PlusCircle } from "lucide-react"
+import { PlusCircle, ChevronDown, ChevronUp } from "lucide-react"
+import { useSearchParams } from "next/navigation"
 import type { Database } from "@/types/supabase"
 
 type ProductInsert = Database['public']['Tables']['products']['Insert']
@@ -55,11 +56,21 @@ const SUPPLIERS = [
 ]
 
 export default function ProductsPage() {
+    const searchParams = useSearchParams()
     const [page, setPage] = React.useState(1)
     const [search, setSearch] = React.useState("")
     const [categoryId, setCategoryId] = React.useState("all")
     const [status, setStatus] = React.useState("all")
     const [supplier, setSupplier] = React.useState("all")
+    const [contentFilter, setContentFilter] = React.useState<"all" | "no-image" | "no-description">("all")
+    const [isFormOpen, setIsFormOpen] = React.useState(false)
+    const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null)
+
+    // URL'den gelen filter param'ını oku (dashboard coverage kartlarından link)
+    React.useEffect(() => {
+        const f = searchParams.get("filter")
+        if (f === "no-image" || f === "no-description") setContentFilter(f)
+    }, [searchParams])
     const [createError, setCreateError] = React.useState("")
     const [createSuccess, setCreateSuccess] = React.useState("")
     const [selectedProduct, setSelectedProduct] = React.useState<ProductWithCategory | null>(null)
@@ -85,20 +96,23 @@ export default function ProductsPage() {
     }, [updateProduct])
 
     const handleDeleteProduct = React.useCallback((product: ProductWithCategory) => {
-        const confirmed = window.confirm(`"${product.name}" ürününü silmek istediğinize emin misiniz?`)
-        if (!confirmed) return
+        setPendingDeleteId(product.id)
+    }, [])
 
-        deleteProduct.mutate(product.id, {
+    const confirmDelete = React.useCallback((id: string) => {
+        deleteProduct.mutate(id, {
+            onSuccess: () => setPendingDeleteId(null),
             onError: (error: unknown) => {
                 const message = error instanceof Error ? error.message : "Ürün silinemedi."
                 alert(message)
+                setPendingDeleteId(null)
             },
         })
     }, [deleteProduct])
 
     const columns = React.useMemo(() => {
-        return getProductColumns(handleUpdateProduct, handleDeleteProduct)
-    }, [handleUpdateProduct, handleDeleteProduct])
+        return getProductColumns(handleUpdateProduct, handleDeleteProduct, pendingDeleteId, confirmDelete)
+    }, [handleUpdateProduct, handleDeleteProduct, pendingDeleteId, confirmDelete])
 
     const handleCreateProduct = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
@@ -189,12 +203,29 @@ export default function ProductsPage() {
             </div>
 
             <Card className="border-slate-200/70 shadow-sm">
-                <CardHeader className="pb-4">
-                    <CardTitle className="text-base font-semibold">Yeni Ürün Ekle</CardTitle>
-                    <CardDescription>
-                        Basit ürün kaydı: ad, SKU, kategori, fiyat ve stok bilgisi.
-                    </CardDescription>
+                <CardHeader
+                    className="pb-4 cursor-pointer select-none"
+                    onClick={() => setIsFormOpen(o => !o)}
+                >
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <CardTitle className="text-base font-semibold flex items-center gap-2">
+                                <PlusCircle className="h-4 w-4 text-primary" />
+                                Yeni Ürün Ekle
+                            </CardTitle>
+                            {!isFormOpen && (
+                                <CardDescription className="mt-0.5">
+                                    Tıklayarak formu aç
+                                </CardDescription>
+                            )}
+                        </div>
+                        {isFormOpen
+                            ? <ChevronUp className="h-4 w-4 text-slate-400" />
+                            : <ChevronDown className="h-4 w-4 text-slate-400" />
+                        }
+                    </div>
                 </CardHeader>
+                {isFormOpen && (
                 <CardContent>
                     <form className="space-y-4" onSubmit={handleCreateProduct}>
                         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
@@ -276,13 +307,36 @@ export default function ProductsPage() {
                         )}
                     </form>
                 </CardContent>
+                )}
             </Card>
+
+            {/* Aktif content filter bildirimi */}
+            {contentFilter !== "all" && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800">
+                    <span>Filtre aktif: <strong>{contentFilter === "no-image" ? "Görselsiz ürünler" : "Açıklamasız ürünler"}</strong></span>
+                    <button
+                        onClick={() => setContentFilter("all")}
+                        className="ml-auto text-xs underline hover:no-underline"
+                    >
+                        Filtreyi kaldır
+                    </button>
+                </div>
+            )}
 
             <div className="flex flex-col lg:flex-row gap-6 items-start">
                 <div className={`transition-all duration-300 ${selectedProduct ? "w-full lg:w-[55%] xl:w-[60%]" : "w-full"}`}>
                     <ProductDataGrid
                         columns={columns}
-                        data={data?.products || []}
+                        data={(data?.products || []).filter(p => {
+                            if (contentFilter === "no-image") {
+                                const imgs = (p.meta as Record<string, unknown>)?.images
+                                return !p.image_url && (!Array.isArray(imgs) || imgs.length === 0)
+                            }
+                            if (contentFilter === "no-description") {
+                                return !p.description || (p.description as string).trim() === ""
+                            }
+                            return true
+                        })}
                         totalCount={data?.totalCount || 0}
                         page={page}
                         pageSize={pageSize}
