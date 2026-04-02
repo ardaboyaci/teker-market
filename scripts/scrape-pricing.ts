@@ -127,23 +127,10 @@ function tokenMatchScore(query: string, productName: string): number {
 }
 
 // ── Fiyat scrape'leri ─────────────────────────────────────────────────────────
-async function getClientPrice(sku: string): Promise<number | null> {
-    const url = `https://www.tekermarket.com.tr/Arama?1&kelime=${queryEncode(sku)}`;
-    try {
-        const { data } = await withRetry(() => http.get(url, { validateStatus: () => true }), { label: `client:${sku}` });
-        const $ = cheerio.load(data);
-        let best: { price: number; score: number } | null = null;
-        $('.ItemOrj').each((_, card) => {
-            const $c  = $(card);
-            const nm  = $c.find('.productName').first().text().trim() || $c.find('a.detailLink').attr('title')?.trim() || '';
-            const raw = $c.find('.discountPriceSpan').first().text().trim() || $c.find('.productPrice').first().text().trim() || '';
-            const price = parsePrice(raw);
-            if (!nm || !price) return;
-            const score = tokenMatchScore(sku, nm);
-            if (score >= 0.5 && (!best || score > best.score)) best = { price, score };
-        });
-        return best ? (best as { price: number; score: number }).price : null;
-    } catch { return null; }
+async function getClientPrice(_sku: string): Promise<number | null> {
+    // tekermarket.com.tr SPA'ya geçti — cheerio ile HTML parse çalışmıyor.
+    // Puppeteer/Playwright gerekiyor. Şimdilik devre dışı.
+    return null;
 }
 
 async function getCompetitorPrice(sku: string, name: string): Promise<{ price: number; matchType: string } | null> {
@@ -155,7 +142,7 @@ async function getCompetitorPrice(sku: string, name: string): Promise<{ price: n
             const $ = cheerio.load(data);
             const results: { name: string; price: number }[] = [];
             const CARD_SEL  = ['div.product-item', '.product-card', '[class*="product-item"]', 'li.product', '.col-sm-6'];
-            const NAME_SEL  = ['.product-title', '.productName', '.urun-adi', '.name', 'h3', 'h2'];
+            const NAME_SEL  = ['a.w-100', '.product-title', '.productName', '.urun-adi', '.name', 'h3', 'h2'];
             const PRICE_SEL = ['.product-price', '.urun-fiyat', '.price', '.current-price', '.indirimliFiyat'];
             let $cards = $();
             for (const s of CARD_SEL) { const f = $(s); if (f.length > $cards.length) $cards = f; }

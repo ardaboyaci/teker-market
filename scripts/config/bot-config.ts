@@ -20,7 +20,7 @@ export const BOT_CONFIG = {
     pricing: {
         undercutRatio:  0.98,   // Rakipten ucuzsa -2%
         fallbackRatio:  0.95,   // Sadece rakipte varsa -5%
-        minMatchScore:  0.6,    // Fuzzy eşleşme eşiği
+        minMatchScore:  0.4,    // Fuzzy eşleşme eşiği (0.6'dan düşürüldü — boyut bazlı sorgularda daha geniş eşleşme)
         delayBetweenMs: 250,
     },
     ciftel: {
