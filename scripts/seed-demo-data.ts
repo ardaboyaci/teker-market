@@ -1,6 +1,7 @@
 /**
  * Demo verisi — rakip fiyatlar + stok hareketi geçmişi
- * Çalıştır: npx tsx scripts/seed-demo-data.ts
+ * Çalıştır: npx tsx scripts/seed-demo-data.ts          → gerçek
+ *           npx tsx scripts/seed-demo-data.ts --dry-run → sadece seçilen ürünleri listele
  */
 import { createClient } from '@supabase/supabase-js'
 import * as dotenv from 'dotenv'
@@ -11,31 +12,44 @@ const supabase = createClient(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const DRY_RUN = process.argv.includes('--dry-run')
+
 async function main() {
     console.log('\n══════════════════════════════════════════')
-    console.log('  DEMO VERİSİ SEED')
+    console.log('  DEMO VERİSİ SEED' + (DRY_RUN ? ' [DRY-RUN]' : ''))
     console.log('══════════════════════════════════════════\n')
 
-    // ── 1. Görseli olan ve fiyatlı 5 aktif ürünü seç ─────────────────────────
+    // ── 1. EMES tedarikçisinden görsel + fiyat + stoklu 5 ürün seç ───────────
     const { data: candidates } = await supabase
         .from('products')
-        .select('id, sku, name, sale_price, image_url')
+        .select('id, sku, name, sale_price, image_url, slug')
         .eq('status', 'active')
         .is('deleted_at', null)
         .not('sale_price', 'is', null)
         .not('image_url', 'is', null)
         .gt('quantity_on_hand', 0)
+        .ilike('meta->>source', '%emes%')
         .order('created_at', { ascending: false })
         .limit(5)
 
     if (!candidates || candidates.length === 0) {
-        console.log('❌ Uygun ürün bulunamadı.')
+        console.log('❌ Uygun EMES ürünü bulunamadı.')
         return
     }
 
-    console.log(`✅ ${candidates.length} demo ürünü seçildi:`)
-    candidates.forEach(p => console.log(`   ${p.sku} — ${p.name.substring(0, 40)}`))
+    console.log(`Seçilen 5 demo ürünü:\n`)
+    candidates.forEach((p, i) => {
+        console.log(`  ${i + 1}. SKU  : ${p.sku}`)
+        console.log(`     İsim : ${p.name}`)
+        console.log(`     Fiyat: ₺${p.sale_price}`)
+        console.log(`     URL  : http://localhost:3000/products/${p.slug}\n`)
+    })
 
+    if (DRY_RUN) {
+        console.log('─── DRY-RUN — DB\'ye hiçbir şey yazılmadı ───')
+        console.log('Onaylamak için: npx tsx scripts/seed-demo-data.ts\n')
+        return
+    }
     // ── 2. Rakip fiyat ekle (sale_price'ın %5-%15 altında) ───────────────────
     console.log('\n🏷  Rakip fiyatlar yazılıyor...')
     for (const product of candidates) {

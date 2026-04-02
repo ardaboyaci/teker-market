@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { ImageOff, X, Save, Box, Tag, FileText } from "lucide-react"
+import { ImageOff, X, Save, Box, Tag, FileText, Copy, Check, ExternalLink } from "lucide-react"
 import { StockMovementHistory } from "@/components/dashboard/stock-movement-history"
 
 export function ProductDetailPanel({ product, onClose }: { product: ProductWithCategory, onClose: () => void }) {
@@ -32,6 +32,20 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
             description: product.description || ""
         })
     }, [product])
+
+    const [copied, setCopied] = useState(false)
+
+    const handleCopyLink = () => {
+        const url = `${window.location.origin}/products/${product.slug}`
+        navigator.clipboard.writeText(url).then(() => {
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+        })
+    }
+
+    const handleOpenLink = () => {
+        window.open(`/products/${product.slug}`, '_blank')
+    }
 
     const handleSave = () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,7 +89,30 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                     <div className="flex flex-col space-y-1 mt-1 pr-8">
                         <div className="text-xs font-semibold tracking-wide text-primary uppercase">{supplier}</div>
                         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 leading-tight">{product.name}</h2>
-                        <div className="text-sm font-medium text-slate-500 dark:text-slate-400">SKU: {product.sku}</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <div className="text-sm font-medium text-slate-500 dark:text-slate-400">SKU: {product.sku}</div>
+                            <button
+                                onClick={handleCopyLink}
+                                title="Müşteri linkini kopyala"
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border transition-colors
+                                    bg-white border-slate-200 text-slate-500 hover:border-primary hover:text-primary
+                                    dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400"
+                            >
+                                {copied
+                                    ? <><Check className="w-3 h-3 text-emerald-500" /><span className="text-emerald-600">Kopyalandı</span></>
+                                    : <><Copy className="w-3 h-3" />Müşteri Linki</>
+                                }
+                            </button>
+                            <button
+                                onClick={handleOpenLink}
+                                title="Ürün sayfasını aç"
+                                className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border transition-colors
+                                    bg-white border-slate-200 text-slate-500 hover:border-primary hover:text-primary
+                                    dark:bg-slate-800 dark:border-slate-600 dark:text-slate-400"
+                            >
+                                <ExternalLink className="w-3 h-3" />Önizle
+                            </button>
+                        </div>
                     </div>
                 </div>
             </CardHeader>
