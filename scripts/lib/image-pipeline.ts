@@ -29,7 +29,8 @@ const http = axios.create({
 // ── Watermark buffer oluştur ────────────────────────────────────────────────
 async function buildWatermark(targetWidth: number): Promise<Buffer | null> {
     try {
-        const logoSize = Math.round(targetWidth * 0.22);
+        // %15 genişlik, max 120px — çok büyük veya kadraj dışı çıkmasın
+        const logoSize = Math.min(Math.round(targetWidth * 0.15), 120);
         // Transparent PNG kullandığımız için beyaz piksel temizleme gerekmez
         // Sadece opacity uygula (%40) ve boyutlandır
         const logoRaw = await sharp(WATERMARK_PATH).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -61,11 +62,19 @@ export async function downloadAndProcess(
         const { data } = await http.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
         const buf = Buffer.from(data as ArrayBuffer);
 
-        const img = sharp(buf).resize(800, null, { withoutEnlargement: true });
         const meta = await sharp(buf).metadata();
-        const w = meta.width ?? 800;
+        const origW = meta.width ?? 800;
+        const origH = meta.height ?? 800;
 
-        const watermark = await buildWatermark(w);
+        // Küçük görseller için büyütme + keskinleştirme uygula (Mertsan gibi low-res kaynaklar)
+        const targetW = Math.max(origW, 400); // en az 400px genişlik
+        const img = sharp(buf)
+            .resize(Math.min(targetW, 800), null, { withoutEnlargement: false })
+            .sharpen({ sigma: 0.8, m1: 0.5, m2: 0.1 }); // bulanıklığı azalt
+
+        // Gerçek çıktı genişliği — watermark boyutunu buna göre hesapla
+        const actualW = Math.min(targetW, 800);
+        const watermark = await buildWatermark(actualW);
 
         const pipeline = watermark
             ? img.composite([{ input: watermark, gravity: 'southeast', blend: 'over' }])

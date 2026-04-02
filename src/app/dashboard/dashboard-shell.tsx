@@ -92,7 +92,7 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
     )
 
     return (
-        <div className="flex min-h-screen bg-slate-50/50 font-sans">
+        <div className="flex min-h-screen bg-slate-50/50 font-sans" style={{ colorScheme: 'light' }}>
             {/* Desktop Sidebar */}
             <aside className="w-[280px] flex-shrink-0 border-r border-slate-200/60 bg-white shadow-sm flex-col hidden lg:flex">
                 {sidebarContent}
