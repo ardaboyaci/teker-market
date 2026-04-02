@@ -6,11 +6,6 @@ type RateLimitOptions = {
     keyPrefix?: string;
 };
 
-type RateLimitEntry = {
-    count: number;
-    resetAt: number;
-};
-
 export type RateLimitResult = {
     success: boolean;
     limit: number;
@@ -19,44 +14,37 @@ export type RateLimitResult = {
     retryAfter: number;
 };
 
+// ─── In-process store (best-effort, serverless'ta cold-start'ta sıfırlanır) ───
+// Production'da Upstash Redis ile değiştirilmeli:
+//   @upstash/redis + @upstash/ratelimit paketi, UPSTASH_REDIS_REST_URL env gerekir
+// Şu an: tek instance / dev ortamı için yeterli.
 declare global {
     // eslint-disable-next-line no-var
-    var __tekerRateLimitStore: Map<string, RateLimitEntry> | undefined;
+    var __tekerRateLimitStore: Map<string, { count: number; resetAt: number }> | undefined;
 }
 
-const rateLimitStore =
-    globalThis.__tekerRateLimitStore ?? new Map<string, RateLimitEntry>();
+const store =
+    globalThis.__tekerRateLimitStore ??
+    new Map<string, { count: number; resetAt: number }>();
 
 if (!globalThis.__tekerRateLimitStore) {
-    globalThis.__tekerRateLimitStore = rateLimitStore;
+    globalThis.__tekerRateLimitStore = store;
 }
 
-function cleanupExpiredEntries(now: number) {
-    if (rateLimitStore.size < 5000) return;
-
-    for (const [key, value] of rateLimitStore.entries()) {
-        if (value.resetAt <= now) {
-            rateLimitStore.delete(key);
-        }
+function cleanup(now: number) {
+    if (store.size < 5000) return;
+    for (const [key, val] of store.entries()) {
+        if (val.resetAt <= now) store.delete(key);
     }
 }
 
 export function getClientIp(request: NextRequest): string {
-    const forwardedFor = request.headers.get("x-forwarded-for");
-    if (forwardedFor) {
-        return forwardedFor.split(",")[0]?.trim() || "127.0.0.1";
-    }
-
-    const realIp = request.headers.get("x-real-ip");
-    if (realIp) return realIp.trim();
-
-    const vercelForwardedFor = request.headers.get("x-vercel-forwarded-for");
-    if (vercelForwardedFor) return vercelForwardedFor.trim();
-
-    const cloudflareIp = request.headers.get("cf-connecting-ip");
-    if (cloudflareIp) return cloudflareIp.trim();
-
-    return "127.0.0.1";
+    return (
+        request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        request.headers.get("x-real-ip")?.trim() ||
+        request.headers.get("cf-connecting-ip")?.trim() ||
+        "127.0.0.1"
+    );
 }
 
 export function consumeRateLimit(
@@ -64,46 +52,42 @@ export function consumeRateLimit(
     options: RateLimitOptions
 ): RateLimitResult {
     const now = Date.now();
-    cleanupExpiredEntries(now);
+    cleanup(now);
 
-    const ip = getClientIp(request);
+    const ip  = getClientIp(request);
     const key = `${options.keyPrefix ?? "global"}:${ip}`;
-    const current = rateLimitStore.get(key);
+    const cur = store.get(key);
 
-    if (!current || current.resetAt <= now) {
+    if (!cur || cur.resetAt <= now) {
         const resetAt = now + options.windowMs;
-        rateLimitStore.set(key, { count: 1, resetAt });
-
+        store.set(key, { count: 1, resetAt });
         return {
             success: true,
             limit: options.limit,
             remaining: Math.max(options.limit - 1, 0),
             resetAt,
-            retryAfter: Math.max(1, Math.ceil((resetAt - now) / 1000)),
+            retryAfter: Math.ceil(options.windowMs / 1000),
         };
     }
 
-    current.count += 1;
-    rateLimitStore.set(key, current);
-
-    const remaining = Math.max(options.limit - current.count, 0);
-    const success = current.count <= options.limit;
-    const retryAfter = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+    cur.count += 1;
+    const remaining = Math.max(options.limit - cur.count, 0);
+    const retryAfter = Math.max(1, Math.ceil((cur.resetAt - now) / 1000));
 
     return {
-        success,
+        success: cur.count <= options.limit,
         limit: options.limit,
         remaining,
-        resetAt: current.resetAt,
+        resetAt: cur.resetAt,
         retryAfter,
     };
 }
 
 export function getRateLimitHeaders(result: RateLimitResult): Record<string, string> {
     return {
-        "X-RateLimit-Limit": String(result.limit),
+        "X-RateLimit-Limit":     String(result.limit),
         "X-RateLimit-Remaining": String(result.remaining),
-        "X-RateLimit-Reset": String(Math.ceil(result.resetAt / 1000)),
-        "Retry-After": String(result.retryAfter),
+        "X-RateLimit-Reset":     String(Math.ceil(result.resetAt / 1000)),
+        "Retry-After":           String(result.retryAfter),
     };
 }
