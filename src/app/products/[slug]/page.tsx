@@ -7,8 +7,7 @@ import type { Metadata } from "next"
 import { ProductImageGallery } from "@/components/storefront/product-image-gallery"
 import { StockBadge } from "@/components/storefront/stock-badge"
 import { PriceBlock } from "@/components/storefront/price-block"
-import { QuantityInput } from "@/components/storefront/quantity-input"
-import { WhatsAppOrderButton } from "@/components/storefront/whatsapp-order-button"
+import { OrderSection } from "@/components/storefront/order-section"
 import { AttributeTable } from "@/components/storefront/attribute-table"
 import { TechnicalDocButton } from "@/components/storefront/technical-doc-button"
 import { RelatedProducts, type RelatedProduct } from "@/components/storefront/related-products"
@@ -190,15 +189,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                         )}
 
                         {/* Madde #22 + #23: Quantity + WhatsApp Order */}
-                        <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 pt-2">
-                            <div>
-                                <label className="text-xs font-medium text-slate-500 mb-1.5 block">Adet</label>
-                                <QuantityInput max={product.quantity_on_hand ?? 0} />
-                            </div>
-                            <div className="flex-1 w-full sm:w-auto">
-                                <WhatsAppOrderButton sku={product.sku} name={product.name} />
-                            </div>
-                        </div>
+                        <OrderSection
+                            sku={product.sku}
+                            name={product.name}
+                            max={product.quantity_on_hand ?? 0}
+                        />
 
                         {/* Madde #25: Technical Doc */}
                         <TechnicalDocButton pdfUrl={pdfUrl} />

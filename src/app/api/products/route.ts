@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
-import { createServerClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { ProductQuerySchema } from '@/lib/validations/price.schema'
 import type { product_status } from '@/types/supabase'
 
@@ -13,7 +13,7 @@ function getCachedProducts(params: ParsedParams) {
 
     return unstable_cache(
         async () => {
-            const supabase = await createServerClient()
+            const supabase = createAdminClient()
 
             const p = params
 
@@ -52,7 +52,7 @@ function getCachedProducts(params: ParsedParams) {
                      weight, width, height,
                      attributes, status, is_featured, tags,
                      created_at, updated_at,
-                     primary_image:product_media(storage_path, alt_text)`,
+                     primary_image:product_media(url, alt_text)`,
                     { count: 'exact' }
                 )
                 .is('deleted_at', null)
