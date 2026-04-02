@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-04-02T18:01:27.751Z",
+  "db_snapshot": {
+    "products_total": 17284,
+    "products_active": 17209,
+    "products_with_image": 6270,
+    "products_with_price": 17209,
+    "product_media_rows": 5717,
+    "price_history_rows": 3425,
+    "stock_movements_rows": 30,
+    "bot_runs_rows": 4
+  }
+}
