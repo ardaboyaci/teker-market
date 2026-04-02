@@ -134,8 +134,23 @@ async function scrapeProductDetail(url: string): Promise<SiteProduct | null> {
 
         // compact: görsel dosya adından türet (en güvenilir)
         // /uploads/excelresim/EA01VBP150.jpg → EA01VBP150
-        const fileMatch = imageUrl.match(/\/([^/]+)\.jpg$/i);
-        const compact = fileMatch ? fileMatch[1].toUpperCase() : '';
+        // Fallback: /uploads/resim/77-1/xyz.jpg gibi rassal isimlerde URL'den türet
+        let compact = '';
+        const fileMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp)$/i);
+        if (fileMatch) {
+            const fname = fileMatch[1].toUpperCase();
+            // Anlamsız hash gibi görünmüyorsa (8+ alfanümerik karakter, nokta içermiyorsa) kullan
+            if (/^[A-Z0-9]{4,}$/.test(fname) && !fname.match(/^[A-Z0-9]{8,}$/)) {
+                compact = fname;
+            }
+        }
+        // compact bulunamadıysa ürün adından türet
+        if (!compact && rawName) {
+            compact = rawName.replace(/\s+/g, '').toUpperCase()
+                .replace(/İ/g,'I').replace(/Ğ/g,'G').replace(/Ü/g,'U')
+                .replace(/Ş/g,'S').replace(/Ö/g,'O').replace(/Ç/g,'C')
+                .replace(/[^A-Z0-9]/g,'').substring(0, 20);
+        }
         if (!compact) return null;
 
         // Ürün adı: h1'den al, kısa tut

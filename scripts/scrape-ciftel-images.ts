@@ -113,10 +113,11 @@ function normalizeName(s: string): string {
         .trim();
 }
 
-// Tüm boyutları çek: "100x20x12" → ["100","20","12"]
+// Tüm boyutları çek: "100x20x12" veya "100X20X12" → ["100","20","12"]
 function extractDims(name: string): string[] {
     const norm = normalizeName(name);
-    const m = norm.match(/^(\d+)\s+(\d+)(?:\s+(\d+))?/);
+    // normalizeName x→X yapıyor, "100X20X12" veya "100 20 12" her iki formatta yakala
+    const m = norm.match(/(\d{2,3})[X\s]+(\d{2,3})(?:[X\s]+(\d{2,3}))?/);
     if (!m) return [];
     return [m[1], m[2], m[3]].filter(Boolean) as string[];
 }
