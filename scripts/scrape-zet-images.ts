@@ -88,13 +88,12 @@ async function saveCheckpoint(done: Set<string>): Promise<void> {
 
 // ── SKU Normalize ─────────────────────────────────────────────────────────────
 // "3001 POR 100*32 F4" → "3001POR100X32F4"
-// "1001 MEB 050"       → "1001MEB050"
-// "3000 POR 125*40 (İnox)" → "3000POR125X40INOX"
+// "ADB 055x25"         → "ADB055X25"
 function normalizeSku(sku: string): string {
     return sku.toUpperCase()
         .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
         .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
-        .replace(/\*/g, 'X')
+        .replace(/[*×x]/gi, 'X')
         .replace(/[^A-Z0-9X]/g, '');
 }
 
@@ -103,6 +102,30 @@ function skuPrefix(sku: string): string {
     const norm = normalizeSku(sku);
     const m = norm.match(/^([A-Z0-9]+[A-Z]{2,})/);
     return m ? m[1] : norm.slice(0, 6);
+}
+
+// Boyutsal eşleşme: "055X25" veya "100X32" gibi parçaları karşılaştır
+// "3001 POR 100*32 F4" → ["100", "32"]
+// "ADB 055x25"         → ["055", "25"] veya ["55", "25"]
+function extractDims(sku: string): string[] {
+    const norm = normalizeSku(sku);
+    // "100X32", "055X25" gibi boyut çiftlerini çek
+    const dims: string[] = [];
+    const m = norm.match(/(\d{2,3})X(\d{2,3})/);
+    if (m) {
+        // Leading zero'suz normalize et: "055" → "55"
+        dims.push(String(parseInt(m[1])));
+        dims.push(String(parseInt(m[2])));
+    }
+    return dims;
+}
+
+// Model kodu eşleşmesi: "ADB", "POR", "MOB" gibi 2-4 harf kodları
+function extractModel(sku: string): string {
+    const norm = normalizeSku(sku);
+    // Sayı olmayan 2-4 harf bloğu
+    const m = norm.match(/(?<![A-Z])([A-Z]{2,4})(?![A-Z])/g);
+    return m ? m[0] : '';
 }
 
 function tokenScore(a: string, b: string): number {
@@ -133,42 +156,34 @@ async function scrapeCategory(catPath: string): Promise<SiteProduct[]> {
         );
         const $ = cheerio.load(html);
 
-        // Ürün kartları: img[src*=upload] + yakın KOD NO text
-        $('img[src*="upload"]').each((_, el) => {
-            const src = $(el).attr('src');
-            if (!src || src.includes('filtre') || src.includes('baglanti')) return;
+        // Her ürün kartı: .productItem
+        // - Görsel: .productPic img[src*="upload"]
+        // - SKU satırları: .tableRow → ilk .tableCol = "ADB 055x25"
+        $('.productItem').each((_, card) => {
+            const imgSrc = $(card).find('.productPic img[src*="upload"]').attr('src');
+            if (!imgSrc) return;
 
-            const fullImg = BASE_URL + src;
-            const container = $(el).closest('div, li, tr, td, article');
-            const text = container.text().replace(/\s+/g, ' ').trim();
+            const fullImg = BASE_URL + imgSrc;
 
-            // "KOD NO 1001 MEB 050 50 20 ..." formatından SKU çek
-            const kodMatch = text.match(/KOD\s*NO\s+([\w\s*]+?)(?:\d{2,3}\s+\d{2,3}|\d+\s+kg|\s{2,}|$)/i);
-            // veya görsel dosya adından çek: 1001MEB.jpg → 1001MEB
-            const fileMatch = src.match(/\/([A-Z0-9_-]+)\.(jpg|jpeg|png|webp)$/i);
+            // Her tablo satırı = bir SKU varyantı (aynı görseli paylaşır)
+            $(card).find('a.tableRow').each((_, row) => {
+                const siteSku = $(row).find('.tableCol').first().text().trim();
+                if (!siteSku || seen.has(siteSku)) return;
+                seen.add(siteSku);
 
-            let siteSku = '';
-            if (kodMatch) {
-                siteSku = kodMatch[1].trim();
-            } else if (fileMatch) {
-                siteSku = fileMatch[1].replace(/_/g, ' ');
-            }
+                const detailHref = $(row).attr('href') || '';
 
-            if (!siteSku || seen.has(fullImg)) return;
-            seen.add(fullImg);
-
-            const detailLink = container.find('a[href*="/tr/"]').first().attr('href');
-
-            products.push({
-                siteSku,
-                normSku:  normalizeSku(siteSku),
-                prefix:   skuPrefix(siteSku),
-                imageUrl: fullImg,
-                detailUrl: detailLink ? BASE_URL + detailLink : undefined,
+                products.push({
+                    siteSku,
+                    normSku:   normalizeSku(siteSku),
+                    prefix:    skuPrefix(siteSku),
+                    imageUrl:  fullImg,
+                    detailUrl: detailHref.startsWith('http') ? detailHref : BASE_URL + detailHref,
+                });
             });
         });
 
-        // Pagination: sonraki sayfa linki
+        // Pagination
         let nextTarget: string | null = null;
         $('a').each((_, a) => {
             const href = $(a).attr('href') || '';
@@ -234,38 +249,55 @@ async function loadDbProducts(): Promise<DbProduct[]> {
 
 // ── Eşleştirme — tüm model eşleşmeleri ──────────────────────────────────────
 // ZET sitesi model bazlı görsel paylaşıyor:
-// "MAB" görseli → DB'deki tüm "MAB" içeren ürünlere uygulanır
+// Görsel URL: /uploads/resim/2001-1/ADB.jpg → model = "ADB"
+// DB SKU: "3001 POR 100*32 F4" → model kodu "POR"
+// Boyut: site "ADB 055x25" → 55x25 / DB "3001 POR 100*32" → 100x32
+//
+// Eşleştirme önceliği:
+//   Tier 1 — Boyut + Model: hem boyut hem model kodu eşleşiyor
+//   Tier 2 — Sadece boyut eşleşmesi (çap x genişlik)
+//   Tier 3 — Sadece model kodu eşleşmesi
+//   Tier 4 — Token score >= 0.50
 function matchAllProducts(site: SiteProduct, dbProducts: DbProduct[]): DbProduct[] {
-    const results: DbProduct[] = [];
+    const siteDims  = extractDims(site.siteSku);
+    const siteModel = extractModel(site.siteSku);
 
-    // Tier 1: exact normalize (tam eşleşme)
-    const t1 = dbProducts.filter(p => p.norm === site.normSku);
-    if (t1.length) return t1;
-
-    // Tier 2a: prefix eşleşmesi
-    const t2a = dbProducts.filter(p => p.prefix === site.prefix);
-    if (t2a.length) return t2a;
-
-    // Tier 2b: site normSku içerme
-    const t2b = dbProducts.filter(p =>
-        p.norm.includes(site.normSku) || site.normSku.includes(p.norm)
-    );
-    if (t2b.length) return t2b;
-
-    // Tier 2c: tek model kodu → tüm DB ürünleri içinde ara
-    if (/^[A-Z]{2,8}$/.test(site.normSku)) {
-        const t2c = dbProducts.filter(p => p.norm.includes(site.normSku));
-        if (t2c.length) return t2c;
+    // Tier 1: Boyut + model birlikte eşleşiyor
+    if (siteDims.length === 2 && siteModel) {
+        const t1 = dbProducts.filter(p => {
+            const pDims  = extractDims(p.sku);
+            const pModel = extractModel(p.sku);
+            return pDims.length === 2 &&
+                   pDims[0] === siteDims[0] && pDims[1] === siteDims[1] &&
+                   pModel === siteModel;
+        });
+        if (t1.length) return t1;
     }
 
-    // Tier 3: token score ≥ 0.60 olan tüm ürünler
-    const t3 = dbProducts
+    // Tier 2: Sadece boyut eşleşmesi (aynı çap x genişlik)
+    if (siteDims.length === 2) {
+        const t2 = dbProducts.filter(p => {
+            const pDims = extractDims(p.sku);
+            return pDims.length === 2 &&
+                   pDims[0] === siteDims[0] && pDims[1] === siteDims[1];
+        });
+        if (t2.length) return t2;
+    }
+
+    // Tier 3: Sadece model kodu eşleşmesi
+    if (siteModel && siteModel.length >= 2) {
+        const t3 = dbProducts.filter(p => extractModel(p.sku) === siteModel);
+        if (t3.length) return t3;
+    }
+
+    // Tier 4: token score >= 0.50
+    const t4 = dbProducts
         .map(p => ({ p, score: tokenScore(p.sku, site.siteSku) }))
-        .filter(x => x.score >= 0.60)
+        .filter(x => x.score >= 0.50)
         .sort((a, b) => b.score - a.score)
         .map(x => x.p);
 
-    return t3;
+    return t4;
 }
 
 // Backward compat için tekil eşleşme

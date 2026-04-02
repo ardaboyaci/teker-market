@@ -357,6 +357,7 @@ export interface Database {
                     external_url: string | null
                     height: string | null
                     id: string
+                    image_url: string | null
                     is_featured: boolean
                     competitor_price: string | null
                     competitor_source: string | null
@@ -394,6 +395,7 @@ export interface Database {
                     external_url?: string | null
                     height?: string | null
                     id?: string
+                    image_url?: string | null
                     is_featured?: boolean
                     competitor_price?: string | null
                     competitor_source?: string | null
@@ -431,6 +433,7 @@ export interface Database {
                     external_url?: string | null
                     height?: string | null
                     id?: string
+                    image_url?: string | null
                     is_featured?: boolean
                     competitor_price?: string | null
                     competitor_source?: string | null

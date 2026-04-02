@@ -97,7 +97,7 @@ export function ProductDataGrid<TData, TValue>({
     const selectedIds = Object.keys(rowSelection)
 
     const currentPageDescCount = data.filter((row: any) => !!row.description).length
-    const currentPageImgCount = data.filter((row: any) => !!row.image_url).length
+    const currentPageImgCount  = data.filter((row: any) => !!row.image_url).length
 
     return (
         <div className="flex flex-col space-y-4">

@@ -328,13 +328,8 @@ export default function ProductsPage() {
                     <ProductDataGrid
                         columns={columns}
                         data={(data?.products || []).filter(p => {
-                            if (contentFilter === "no-image") {
-                                const imgs = (p.meta as Record<string, unknown>)?.images
-                                return !p.image_url && (!Array.isArray(imgs) || imgs.length === 0)
-                            }
-                            if (contentFilter === "no-description") {
-                                return !p.description || (p.description as string).trim() === ""
-                            }
+                            if (contentFilter === "no-image") return !p.image_url
+                            if (contentFilter === "no-description") return !p.description || p.description.trim() === ""
                             return true
                         })}
                         totalCount={data?.totalCount || 0}

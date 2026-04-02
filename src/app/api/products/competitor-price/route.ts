@@ -5,9 +5,9 @@ export async function POST(req: NextRequest) {
     try {
         const supabase = await createServerClient()
 
-        // Auth guard — sadece oturum açmış kullanıcılar
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session) {
+        // Auth guard — getUser() sunucu tarafında her zaman doğrular (getSession() cache'lenebilir)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
             return NextResponse.json({ error: 'Yetkisiz erişim.' }, { status: 401 })
         }
 

@@ -1,10 +1,15 @@
 /**
- * EMES GÖRSEL BOTU v4 — Seri+Boyut bazlı eşleştirme
+ * EMES GÖRSEL BOTU v5 — Seri+Boyut + Direkt URL denemesi
  *
  * DB'deki EMES ürün adından seri+no ve boyut çıkarılır,
  * katalogda bu ikisini içeren ilk ürünün görseli kullanılır.
  *
- * Öncelik sırası: F (frenli) olmayan → VBP > SMR > SPR > HBZ > diğer
+ * Eşleşme sırası:
+ *   Tier 1 — Tam compact eşleşme (katalogda birebir)
+ *   Tier 2 — Token bazlı kısmi compact eşleşme
+ *   Tier 3 — Seri+Boyut filtresi (bağlantı tipi önceliği)
+ *   Tier 4 — Direkt URL deneme: SKU'dan URL üret, HEAD ile kontrol et
+ *             (EM07, EM05, YEDEK, KULP gibi kataloğa girmeyen ürünler için)
  *
  * Flags:
  *   --dry-run     Storage/DB'ye yazmadan logla
@@ -14,9 +19,80 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import axios from 'axios';
+import https from 'https';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { downloadAndProcess, uploadToStorage, linkToProduct, sleep } from './lib/image-pipeline';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
+
+const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+const http = axios.create({ httpsAgent, timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+
+// EMES sitesindeki resim URL pattern'leri
+const EMES_IMG_BASES = [
+    'https://emesteker.com/uploads/excelresim/',
+    'https://emesteker.com/uploads/resim/',
+    'https://emesteker.com/Content/images/',
+];
+
+/** SKU'dan compact URL anahtar üret: "EM 07 SMRG 80X25 F" → "EM07SMRG80X25F" */
+function skuToCompact(sku: string): string {
+    return sku
+        .toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+        .replace(/[*×]/g, 'X')
+        .replace(/[^A-Z0-9X]/g, '');
+}
+
+/** YEDEK SKU normalizasyonu: "YEDEK-VBP 150X50 (6005-Ø25)" → "VBP150X50" */
+function yedekToCompact(sku: string): string {
+    return sku
+        .replace(/^YEDEK[-\s]*/i, '')
+        .replace(/\(.*?\)/g, '')
+        .toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+        .replace(/[*×Ø]/g, 'X')
+        .replace(/[^A-Z0-9X]/g, '');
+}
+
+/** HTTP HEAD ile URL'in var olup olmadığını kontrol et */
+async function urlExists(url: string): Promise<boolean> {
+    try {
+        const res = await http.head(url, { validateStatus: () => true });
+        return res.status === 200;
+    } catch {
+        return false;
+    }
+}
+
+/** Tier 4: SKU'dan olası görsel URL'lerini üret ve ilk geçerlisini döndür */
+async function tryDirectUrl(sku: string, name: string): Promise<string | null> {
+    const compacts = new Set<string>();
+
+    // SKU'dan compact
+    compacts.add(skuToCompact(sku));
+    // YEDEK prefix varsa sil
+    if (/^YEDEK/i.test(sku)) compacts.add(yedekToCompact(sku));
+    // Name'den compact (farklıysa)
+    if (name) compacts.add(skuToCompact(name.split(' ').slice(0, 4).join(' ')));
+
+    const exts = ['.jpg', '.jpeg', '.png', '.webp'];
+
+    for (const compact of compacts) {
+        if (!compact || compact.length < 3) continue;
+        for (const base of EMES_IMG_BASES) {
+            for (const ext of exts) {
+                const url = base + compact + ext;
+                if (await urlExists(url)) return url;
+            }
+        }
+    }
+    return null;
+}
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -199,6 +275,36 @@ async function main() {
         const match = findMatch(product.name || '', product.sku, catalog, catalogMap);
 
         if (!match) {
+            // ── Tier 4: Direkt URL deneme ──────────────────────────────────
+            const directUrl = await tryDirectUrl(product.sku, product.name || '');
+            if (directUrl) {
+                if (DRY_RUN) {
+                    console.log(`\n  ✓ [direct-url] "${product.name || product.sku}" → ${directUrl}`);
+                    log.push({ sku: product.sku, name: product.name, status: 'dry:direct-url', url: directUrl });
+                    matched++;
+                } else {
+                    const safeName = (product.name || product.sku).replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    const localPath = path.join(OUTPUT_DIR, `${safeName}.webp`);
+                    const processed = await downloadAndProcess(directUrl, localPath);
+                    if (processed) {
+                        const publicUrl = await uploadToStorage(supabase, localPath, product.sku);
+                        if (publicUrl) {
+                            const linked = await linkToProduct(supabase, product.id, publicUrl);
+                            if (linked) { matched++; process.stdout.write(`\r  ✅ ${nameShort}\n`); }
+                            else errors++;
+                        } else errors++;
+                        try { await fs.unlink(localPath); } catch { /* */ }
+                    } else errors++;
+                    log.push({ sku: product.sku, name: product.name, status: `ok:direct-url`, url: directUrl });
+                }
+                processedSet.add(product.id);
+                cp.processedIds.push(product.id);
+                cp.stats = { matched, notFound, errors };
+                await saveCheckpoint(cp);
+                await sleep(200);
+                continue;
+            }
+
             log.push({ sku: product.sku, name: product.name, status: 'not_found' });
             notFound++;
             processedSet.add(product.id);

@@ -49,7 +49,9 @@ async function stepSyncPrices() {
         const priceChanged = currentSalePrice === null ||
             Math.abs(currentSalePrice - newSalePrice) > 0.001
 
+        // TODO: gerçek fiyat scraping entegre edilene kadar otomatik güncelleme devre dışı
         if (!priceChanged) { skipped++; continue }
+        skipped++; continue // placeholder — aktif etme
 
         // products tablosunu güncelle
         const { error: updateErr } = await supabase
@@ -58,7 +60,7 @@ async function stepSyncPrices() {
             .eq('id', product.id)
 
         if (updateErr) {
-            errors.push(`${product.sku}: ${updateErr.message}`)
+            errors.push(`${product.sku}: ${updateErr?.message ?? 'unknown'}`)
             continue
         }
 

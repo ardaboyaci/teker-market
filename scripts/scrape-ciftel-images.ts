@@ -102,6 +102,66 @@ function extractSiteSku(href: string): string | null {
     return m ? m[1] : null;
 }
 
+// Ad normalize: "100x20x12 Çelik Jantlı Beyaz Lastik" → "100X20X12 CELIK JANTLI BEYAZ LASTIK"
+function normalizeName(s: string): string {
+    return s
+        .toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+        .replace(/[*×xX]/g, 'X')
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .trim();
+}
+
+// Tüm boyutları çek: "100x20x12" → ["100","20","12"]
+function extractDims(name: string): string[] {
+    const norm = normalizeName(name);
+    const m = norm.match(/^(\d+)\s+(\d+)(?:\s+(\d+))?/);
+    if (!m) return [];
+    return [m[1], m[2], m[3]].filter(Boolean) as string[];
+}
+
+// Anahtar kelimeler: sayı olmayan, 2+ harf blokları
+function keywords(name: string): Set<string> {
+    return new Set(
+        normalizeName(name)
+            .split(' ')
+            .filter(t => !/^\d+$/.test(t) && t.length >= 2)
+    );
+}
+
+/**
+ * Çok katmanlı benzerlik skoru (0–1):
+ *   - Boyut tam eşleşmesi zorunlu (çap+genişlik) → temel kriter
+ *   - Keyword örtüşmesi boyut eşleşmesi olmadan yeterli değil
+ */
+function nameSimilarity(siteName: string, dbName: string): number {
+    const sd = extractDims(siteName);
+    const dd = extractDims(dbName);
+    const sk = keywords(siteName);
+    const dk = keywords(dbName);
+
+    // Boyut eşleşmesi yoksa skor çok düşük — yanlış eşleşmeyi önler
+    let dimScore = 0;
+    if (sd.length >= 2 && dd.length >= 2) {
+        if (sd[0] === dd[0] && sd[1] === dd[1]) {
+            dimScore = sd[2] && dd[2] && sd[2] === dd[2] ? 0.6 : 0.5;
+        } else if (sd[0] === dd[0]) {
+            dimScore = 0.1; // sadece çap eşleşti — zayıf
+        }
+    }
+
+    // Boyut eşleşmesi yoksa maksimum 0.2 — asla threshold'u geçemez
+    if (dimScore === 0) return 0;
+
+    // Keyword örtüşme bonusu
+    if (!sk.size) return dimScore;
+    const overlap = [...sk].filter(w => dk.has(w)).length;
+    const kwScore = overlap / Math.max(sk.size, dk.size);
+
+    return dimScore + kwScore * (1 - dimScore);
+}
+
 // ── Site tarama ───────────────────────────────────────────────────────────────
 interface SiteItem {
     siteSku:     string;
@@ -236,28 +296,41 @@ async function main() {
         .is('deleted_at', null)
         .is('image_url', null);
 
-    const dbMap = new Map<string, { id: string; name: string }>();
-    for (const p of dbProducts ?? []) {
-        dbMap.set(p.sku, { id: p.id, name: p.name });
-    }
-    console.log(`[DB] ${dbMap.size} ÇİFTEL ürünü görsel bekliyor\n`);
+    const dbList = (dbProducts ?? []) as { id: string; sku: string; name: string }[];
+    console.log(`[DB] ${dbList.length} ÇİFTEL ürünü görsel bekliyor\n`);
 
-    // 3. Her site ürünü için işle
-    const log: { sku: string; status: string; url?: string }[] = [];
+    // Site ürünlerini Set'e al — çakışmaları önlemek için
+    const usedSiteSkus = new Set<string>();
+
+    // 3. DB → Site yönünde eşleştir (her DB ürünü için en iyi site ürününü bul)
+    const toProcessDb = LIMIT ? dbList.slice(0, LIMIT) : dbList;
+    const log: { sku: string; status: string; url?: string; matchedDb?: string }[] = [];
     let matched = 0, skipped = 0, errors = 0;
 
-    for (let i = 0; i < toProcess.length; i++) {
-        const item   = toProcess[i];
-        const dbProd = dbMap.get(item.siteSku);
+    for (let i = 0; i < toProcessDb.length; i++) {
+        const dbProd = toProcessDb[i];
+        if (doneSet.has(dbProd.sku)) continue;
 
-        if (!dbProd) { skipped++; continue; }
+        // Sitede en benzer ürünü bul (kullanılmamış olanlar arasında)
+        let bestSite: SiteItem | null = null;
+        let bestScore = 0;
+        for (const item of siteItems) {
+            if (usedSiteSkus.has(item.siteSku)) continue;
+            const score = nameSimilarity(item.name, dbProd.name);
+            if (score > bestScore) { bestScore = score; bestSite = item; }
+        }
 
-        process.stdout.write(`\r  [${i + 1}/${toProcess.length}] SKU: ${item.siteSku} — ${item.name.substring(0, 40)}`);
+        if (!bestSite || bestScore < 0.5) { skipped++; continue; }
+
+        const item = bestSite;
+
+        process.stdout.write(`\r  [${i + 1}/${toProcessDb.length}] ${dbProd.sku} — ${dbProd.name.substring(0, 40)}`);
 
         if (DRY_RUN) {
-            console.log(`\n  ✓ [DRY] ${item.siteSku} → ${item.originalUrl}`);
-            log.push({ sku: item.siteSku, status: 'dry-run', url: item.originalUrl });
-            doneSet.add(item.siteSku);
+            console.log(`\n  ✓ [DRY] DB:${dbProd.name} (skor:${bestScore.toFixed(2)}) → Site:${item.name} | ${item.originalUrl}`);
+            log.push({ sku: dbProd.sku, status: 'dry-run', url: item.originalUrl, matchedDb: item.name });
+            doneSet.add(dbProd.sku);
+            usedSiteSkus.add(item.siteSku);
             matched++;
             continue;
         }
@@ -284,12 +357,13 @@ async function main() {
             .eq('id', dbProd.id);
 
         if (error) {
-            console.error(`\n  ✗ DB hatası: ${item.siteSku}: ${error.message}`);
-            log.push({ sku: item.siteSku, status: 'db_error' });
+            console.error(`\n  ✗ DB hatası: ${dbProd.sku}: ${error.message}`);
+            log.push({ sku: dbProd.sku, status: 'db_error' });
             errors++;
         } else {
-            log.push({ sku: item.siteSku, status: 'ok', url: publicUrl });
-            doneSet.add(item.siteSku);
+            log.push({ sku: dbProd.sku, status: 'ok', url: publicUrl, matchedDb: item.name });
+            doneSet.add(dbProd.sku);
+            usedSiteSkus.add(item.siteSku);
             matched++;
         }
 
@@ -308,10 +382,10 @@ async function main() {
     console.log('\n\n━━━ ÖZET ━━━');
     console.table({
         'Görsel Eklendi':       { Adet: matched },
-        'DB\'de Yok / Atlanan': { Adet: skipped },
+        'DB\'de Eşleşme Yok':  { Adet: skipped },
         'Hata':                 { Adet: errors },
         'Site Ürün Sayısı':     { Adet: siteItems.length },
-        'DB Bekleyen':          { Adet: dbMap.size },
+        'DB İşlenen':           { Adet: toProcessDb.length },
     });
     console.log(`[Log] ${LOG_FILE}`);
     console.log(`[Checkpoint] ${CHECKPOINT_FILE}`);

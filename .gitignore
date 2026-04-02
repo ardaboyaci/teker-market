@@ -4,6 +4,11 @@ scripts/output.log
 .next/
 .env.local
 tsconfig.tsbuildinfo
+.DS_Store
 
 # İç içe repo klonu engellemek için
 teker-market/
+
+# Tedarikçi Excel/XLS dosyaları — hassas fiyat verisi
+*.xls
+*.xlsx
