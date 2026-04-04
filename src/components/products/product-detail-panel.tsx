@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { ImageOff, X, Save, Box, Tag, FileText, Copy, Check, ExternalLink } from "lucide-react"
+import { ImageOff, X, Save, Box, Tag, FileText, Copy, Check, ExternalLink, RefreshCw } from "lucide-react"
 import { StockMovementHistory } from "@/components/dashboard/stock-movement-history"
 
 export function ProductDetailPanel({ product, onClose }: { product: ProductWithCategory, onClose: () => void }) {
@@ -34,6 +34,31 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
     }, [product])
 
     const [copied, setCopied] = useState(false)
+    const [revizing, setRevizing] = useState(false)
+    const [revizeMsg, setRevizeMsg] = useState<string | null>(null)
+
+    const handleRevize = async () => {
+        setRevizing(true)
+        setRevizeMsg(null)
+        try {
+            const res = await fetch('/api/products/competitor-price', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId: product.id }),
+            })
+            const data = await res.json()
+            if (res.ok) {
+                setRevizeMsg(`✓ ₺${data.applied.new_price} uygulandı`)
+                setFormData(f => ({ ...f, sale_price: String(data.applied.new_price) }))
+            } else {
+                setRevizeMsg(`✗ ${data.error}`)
+            }
+        } catch {
+            setRevizeMsg('✗ Bağlantı hatası')
+        } finally {
+            setRevizing(false)
+        }
+    }
 
     const handleCopyLink = () => {
         const url = `${window.location.origin}/products/${product.slug}`
@@ -165,15 +190,25 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                         </div>
                     </div>
 
-                    {/* Competitor Price Readonly */}
+                    {/* Competitor Price + Revize */}
                     {compPrice && (
                         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex justify-between items-center text-sm">
                             <div>
                                 <strong className="text-amber-800">Rakip:</strong> <span className="text-amber-700">{compSource || "e-tekerlek"}</span>
+                                {revizeMsg && <div className="text-xs mt-1 text-slate-600">{revizeMsg}</div>}
                             </div>
-                            <div className="text-right">
+                            <div className="text-right flex flex-col items-end gap-1">
                                 <div className="font-bold text-amber-700">₺{Number(compPrice).toFixed(2)}</div>
                                 <div className="text-[10px] text-amber-600/70">{compDate ? new Date(compDate).toLocaleDateString() : 'Bilinmeyen'} tarihli</div>
+                                <button
+                                    onClick={handleRevize}
+                                    disabled={revizing}
+                                    className="flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border transition-colors
+                                        bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200 disabled:opacity-50"
+                                >
+                                    <RefreshCw className={`w-3 h-3 ${revizing ? 'animate-spin' : ''}`} />
+                                    Revize Et
+                                </button>
                             </div>
                         </div>
                     )}

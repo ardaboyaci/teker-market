@@ -21,6 +21,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { chromium, Browser, BrowserContext } from 'playwright';
 import { BOT_CONFIG, withRetry } from './config/bot-config';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
@@ -133,32 +134,53 @@ async function getClientPrice(_sku: string): Promise<number | null> {
     return null;
 }
 
-async function getCompetitorPrice(sku: string, name: string): Promise<{ price: number; matchType: string } | null> {
-    async function scrapeEtekerlek(q: string): Promise<{ name: string; price: number }[]> {
-        if (!q || q.length < 3) return [];
-        const url = `https://www.e-tekerlek.com/arama?q=${queryEncode(q)}`;
-        try {
-            const { data } = await withRetry(() => http.get(url, { validateStatus: () => true }), { label: `comp:${q}` });
-            const $ = cheerio.load(data);
+// ── Playwright browser singleton ──────────────────────────────────────────────
+let _browser: Browser | null = null;
+let _context: BrowserContext | null = null;
+
+async function getBrowserContext(): Promise<BrowserContext> {
+    if (!_context) {
+        _browser = await chromium.launch({ headless: true });
+        _context = await _browser.newContext({
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            extraHTTPHeaders: { 'Accept-Language': 'tr-TR,tr;q=0.9' },
+        });
+    }
+    return _context;
+}
+
+async function closeBrowser() {
+    if (_browser) { await _browser.close(); _browser = null; _context = null; }
+}
+
+async function scrapeEtekerlek(q: string): Promise<{ name: string; price: number }[]> {
+    if (!q || q.length < 3) return [];
+    const ctx = await getBrowserContext();
+    const page = await ctx.newPage();
+    try {
+        await page.goto(`https://www.e-tekerlek.com/arama?q=${queryEncode(q)}`, {
+            waitUntil: 'domcontentloaded', timeout: 20000,
+        });
+        await page.waitForTimeout(3000);
+
+        return await page.evaluate(() => {
+            const cards = document.querySelectorAll('.product-item');
             const results: { name: string; price: number }[] = [];
-            const CARD_SEL  = ['div.product-item', '.product-card', '[class*="product-item"]', 'li.product', '.col-sm-6'];
-            const NAME_SEL  = ['a.w-100', '.product-title', '.productName', '.urun-adi', '.name', 'h3', 'h2'];
-            const PRICE_SEL = ['.product-price', '.urun-fiyat', '.price', '.current-price', '.indirimliFiyat'];
-            let $cards = $();
-            for (const s of CARD_SEL) { const f = $(s); if (f.length > $cards.length) $cards = f; }
-            $cards.each((_, card) => {
-                const $c = $(card);
-                let pName = '';
-                for (const s of NAME_SEL) { const t = $c.find(s).first().text().trim(); if (t.length > 3) { pName = t; break; } }
-                let pRaw = '';
-                for (const s of PRICE_SEL) { const t = $c.find(s).first().text().trim(); if (t) { pRaw = t; break; } }
-                const price = parsePrice(pRaw);
-                if (pName && price) results.push({ name: pName, price });
+            cards.forEach(card => {
+                const nameEl = card.querySelector('a.w-100, .product-title, .w-100.product-title');
+                const name = nameEl?.getAttribute('title') || nameEl?.textContent?.trim() || '';
+                const priceText = card.textContent || '';
+                const m = priceText.match(/([\d\.]+),(\d{2})\s*TL/);
+                const price = m ? parseFloat(m[1].replace(/\./g, '') + '.' + m[2]) : null;
+                if (name && name.length > 5 && price) results.push({ name, price });
             });
             return results;
-        } catch { return []; }
-    }
+        });
+    } catch { return []; }
+    finally { await page.close(); }
+}
 
+async function getCompetitorPrice(sku: string, name: string): Promise<{ price: number; matchType: string } | null> {
     // Tier 1: exact SKU
     const t1 = await scrapeEtekerlek(sku);
     for (const r of t1) {
@@ -166,7 +188,7 @@ async function getCompetitorPrice(sku: string, name: string): Promise<{ price: n
             return { price: r.price, matchType: 'Exact SKU' };
     }
 
-    // Tier 2: smart query
+    // Tier 2: smart query (boyut + malzeme)
     const dimMatch      = name.toUpperCase().match(/(\d+)\s*(X|\*)\s*(\d+)/i);
     const materialMatch = name.match(/poliamid|poliüretan|pvc|lastik|kauçuk|zamak|pik|döküm/i);
     const keywords      = name.toUpperCase().replace(/TEKERLEK|TEKER|SABİT|OYNAK|FRENLİ|BUR\.|JANT|RULMANLI/g, '').replace(/[^\w\sÇŞĞÜÖİ]/gi, ' ').split(/\s+/).filter(w => w.length > 2);
@@ -177,7 +199,6 @@ async function getCompetitorPrice(sku: string, name: string): Promise<{ price: n
     const smartQuery = parts.join(' ').trim();
 
     if (smartQuery !== sku && smartQuery.length >= 3) {
-        await sleep(200);
         const t2 = await scrapeEtekerlek(smartQuery);
         for (const r of t2) {
             const score = tokenMatchScore(name, r.name);
@@ -185,6 +206,20 @@ async function getCompetitorPrice(sku: string, name: string): Promise<{ price: n
                 return { price: r.price, matchType: `Smart Name (${Math.round(score * 100)}%)` };
         }
     }
+
+    // Tier 3: sadece boyut (malzeme filtresi atmışsa)
+    if (dimMatch) {
+        const dimQuery = `${dimMatch[1]}x${dimMatch[3]}`;
+        if (dimQuery !== smartQuery) {
+            const t3 = await scrapeEtekerlek(dimQuery);
+            for (const r of t3) {
+                const score = tokenMatchScore(name, r.name);
+                if (score > BOT_CONFIG.pricing.minMatchScore)
+                    return { price: r.price, matchType: `Dim Only (${Math.round(score * 100)}%)` };
+            }
+        }
+    }
+
     return null;
 }
 
@@ -260,16 +295,30 @@ async function main() {
     const doneIds = await loadCheckpoint();
     const runId   = await startBotRun('scrape-pricing', { dryRun: DRY_RUN, limit: LIMIT });
 
-    let query = supabase
-        .from('products')
-        .select('id, sku, name, sale_price')
-        .is('deleted_at', null)
-        .eq('status', 'active')
-        .order('sku');
-    if (LIMIT) query = query.limit(LIMIT);
-
-    const { data: products, error } = await query;
-    if (error) { console.error('DB Error:', error.message); await finishBotRun(runId, 0, 1, 'failed'); return; }
+    // Tüm ürünleri paginate ederek çek (Supabase 1000 limit aşmak için)
+    let products: any[] = [];
+    if (LIMIT) {
+        const { data, error } = await supabase
+            .from('products').select('id, sku, name, sale_price')
+            .is('deleted_at', null).eq('status', 'active').order('sku').limit(LIMIT);
+        if (error) { console.error('DB Error:', error.message); await finishBotRun(runId, 0, 1, 'failed'); return; }
+        products = data ?? [];
+    } else {
+        let offset = 0;
+        while (true) {
+            const { data, error } = await supabase
+                .from('products').select('id, sku, name, sale_price')
+                .is('deleted_at', null).eq('status', 'active').order('sku')
+                .range(offset, offset + 999);
+            if (error) { console.error('DB Error:', error.message); break; }
+            if (!data || data.length === 0) break;
+            products = products.concat(data);
+            if (data.length < 1000) break;
+            offset += 1000;
+            process.stdout.write(`\r  DB çekiliyor: ${products.length}`);
+        }
+        console.log(`\n`);
+    }
 
     const toProcess = (products ?? []).filter(p => !doneIds.has(p.id));
     console.log(`[DB] ${products?.length ?? 0} ürün toplam, ${toProcess.length} işlenecek\n`);
@@ -284,12 +333,14 @@ async function main() {
 
     await saveCheckpoint(doneIds);
     await finishBotRun(runId, stat.processed, stat.errors);
+    await closeBrowser();
 
     console.log('\n━━━ TAMAMLANDI ━━━');
     console.table(stat);
 }
 
 main().catch(async err => {
+    await closeBrowser();
     console.error('[Fatal]', err instanceof Error ? err.message : err);
     process.exit(1);
 });

@@ -22,6 +22,7 @@ const supabase = createClient(
 );
 
 const DRY_RUN = process.argv.includes('--dry-run');
+const FORCE   = process.argv.includes('--force'); // Mevcut düşük kaliteli görsellerin üzerine yaz
 const BASE = 'https://www.mertsanteker.com';
 const OUTPUT_DIR = path.resolve(process.cwd(), 'scripts/output/mertsan-images');
 const LOG_FILE   = path.resolve(process.cwd(), 'scripts/output/mertsan-images-log.json');
@@ -54,12 +55,13 @@ async function main() {
 
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
 
-    const { data: products, error } = await supabase
+    const baseQuery = supabase
         .from('products')
         .select('id, sku, name')
         .contains('meta', { source: 'mertsan_2026' })
-        .is('image_url', null)
         .is('deleted_at', null);
+
+    const { data: products, error } = await (FORCE ? baseQuery : baseQuery.is('image_url', null));
 
     if (error) { console.error('[DB]', error.message); process.exit(1); }
     console.log(`[DB] ${products?.length ?? 0} MERTSAN ürünü görsel bekliyor\n`);

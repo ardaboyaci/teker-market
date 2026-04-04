@@ -40,6 +40,22 @@ export interface SiteProduct {
     detailUrl: string;
 }
 
+// Aksesuar alt kategorileri
+const AKSESUAR_CATEGORIES = [
+    '/tr/makine-ekipmanlari/carklar-5455.html',
+    '/tr/makine-ekipmanlari/kaucuk-taban-ve-pedler-5464.html',
+    '/tr/makine-ekipmanlari/kilit-ve-anahtarlari-5468.html',
+    '/tr/makine-ekipmanlari/kollar-5544.html',
+    '/tr/makine-ekipmanlari/makine-ayaklari-5427.html',
+    '/tr/makine-ekipmanlari/makine-kulplari-5488.html',
+    '/tr/makine-ekipmanlari/mandal-ve-karsiliklari-5508.html',
+    '/tr/makine-ekipmanlari/menteseler-5511.html',
+    '/tr/makine-ekipmanlari/raylar-8678.html',
+    '/tr/makine-ekipmanlari/rotil-ve-ayaklari-5519.html',
+    '/tr/makine-ekipmanlari/takozlar-5525.html',
+    '/tr/makine-ekipmanlari/tutamaklar-5449.html',
+];
+
 // ─── Tüm ürün detay URL'lerini topla ────────────────────────────────────────
 async function collectProductUrls(): Promise<string[]> {
     const allUrls = new Set<string>();
@@ -98,6 +114,34 @@ async function collectProductUrls(): Promise<string[]> {
         await sleep(300);
     }
 
+    console.log(`\n  Teker sayfalarından ${allUrls.size} URL toplandı`);
+
+    // Aksesuar kategorilerini tara
+    console.log(`  Aksesuar kategorileri taranıyor (${AKSESUAR_CATEGORIES.length} kategori)...`);
+    for (let i = 0; i < AKSESUAR_CATEGORIES.length; i++) {
+        const catPath = AKSESUAR_CATEGORIES[i];
+        process.stdout.write(`\r  [${i + 1}/${AKSESUAR_CATEGORIES.length}] ${catPath.split('/').pop()?.padEnd(40)} | URL: ${allUrls.size}`);
+
+        try {
+            const { data, status } = await http.get(
+                `${BASE_URL}${catPath}`,
+                { validateStatus: () => true }
+            );
+            if (status !== 200) continue;
+
+            const $ = cheerio.load(data);
+            $('a[href]').each((_, el) => {
+                const href = $(el).attr('href') || '';
+                // /tr/makine-ekipmanlari/kategori/urun-slug.html
+                if (/\/tr\/makine-ekipmanlari\/[^/]+\/[^?#]+\.html$/.test(href)) {
+                    allUrls.add(`${BASE_URL}${href}`);
+                }
+            });
+        } catch { /* devam */ }
+
+        await sleep(300);
+    }
+
     console.log(`\n  Toplam ${allUrls.size} ürün URL'si toplandı`);
     return [...allUrls];
 }
@@ -116,7 +160,9 @@ async function scrapeProductDetail(url: string): Promise<SiteProduct | null> {
         // Görsel — önce ürün görseli, sonra fallback
         let imageUrl = '';
         const imgSelectors = [
-            '#ctl00_ContentPlaceHolder1_imageProduct',
+            '#ctl00_ContentPlaceHolder1_imageProduct',   // teker ürünleri
+            '#ctl00_ContentPlaceHolder1_imgGorsel',      // aksesuar ürünleri
+            '.mechanic-product-image img',               // aksesuar fallback
             '.product-detail-content img',
             '[class*="product-image"] img',
             '[class*="detail"] img',
@@ -132,9 +178,16 @@ async function scrapeProductDetail(url: string): Promise<SiteProduct | null> {
 
         if (!imageUrl) return null;
 
+        // Ürün adı: h1'den al
+        const rawName = (
+            $('[class*="product-header-right-head"]').first().text().trim() ||
+            $('h1').first().text().trim() ||
+            $('title').text().split('|')[0].trim()
+        ).split('\n')[0].replace(/\s+/g, ' ').trim();
+
         // compact: görsel dosya adından türet (en güvenilir)
         // /uploads/excelresim/EA01VBP150.jpg → EA01VBP150
-        // Fallback: /uploads/resim/77-1/xyz.jpg gibi rassal isimlerde URL'den türet
+        // Fallback: /uploads/resim/77-1/xyz.jpg gibi rassal isimlerde ürün adından türet
         let compact = '';
         const fileMatch = imageUrl.match(/\/([^/]+)\.(jpg|jpeg|png|webp)$/i);
         if (fileMatch) {
@@ -152,13 +205,6 @@ async function scrapeProductDetail(url: string): Promise<SiteProduct | null> {
                 .replace(/[^A-Z0-9]/g,'').substring(0, 20);
         }
         if (!compact) return null;
-
-        // Ürün adı: h1'den al, kısa tut
-        const rawName = (
-            $('[class*="product-header-right-head"]').first().text().trim() ||
-            $('h1').first().text().trim() ||
-            $('title').text().split('|')[0].trim()
-        ).split('\n')[0].replace(/\s+/g, ' ').trim();
 
         const name = rawName.length > 3 ? rawName : compact;
 

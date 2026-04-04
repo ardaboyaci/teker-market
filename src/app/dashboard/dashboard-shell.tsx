@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { LayoutDashboard, Table2, Settings, LogOut, Menu, X } from "lucide-react"
 import { createBrowserClient } from "@/lib/supabase/client"
@@ -35,9 +36,7 @@ export function DashboardShell({ children, user }: DashboardShellProps) {
         <>
             <div className="h-16 flex items-center px-6 border-b border-slate-100">
                 <Link href="/dashboard" className="flex items-center gap-2">
-                    <span className="text-primary text-2xl leading-none font-extrabold flex items-center">
-                        ⚙
-                    </span>
+                    <Image src="/logo.png" alt="Teker Market" width={32} height={32} className="rounded" />
                     <h2 className="text-lg font-bold tracking-tight text-slate-900 border-l border-slate-200 pl-3 ml-1">
                         Teker<span className="font-medium text-slate-500">Admin</span>
                     </h2>
