@@ -30,10 +30,16 @@ const supabaseUrl        = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const DRY_RUN  = process.argv.includes('--dry-run');
-const RESUME   = process.argv.includes('--resume');
-const limitArg = process.argv.find(a => a.startsWith('--limit='));
-const LIMIT    = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const DRY_RUN    = process.argv.includes('--dry-run');
+const RESUME     = process.argv.includes('--resume');
+const limitArg   = process.argv.find(a => a.startsWith('--limit='));
+const LIMIT      = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const sourceArg  = process.argv.find(a => a.startsWith('--source='));
+const SOURCE_FILTER = sourceArg ? sourceArg.split('=')[1] : null; // örn: emes_2026
+const ONLY_WITH_DIM = process.argv.includes('--only-dim'); // sadece boyut içeren ürünler
+
+// Arama sonucu cache — aynı sorguyu tekrar çekmeye gerek yok
+const searchCache = new Map<string, { name: string; price: number }[]>();
 
 // SSL: sadece prod'da strict
 const httpsAgent = new https.Agent({
@@ -137,47 +143,67 @@ async function getClientPrice(_sku: string): Promise<number | null> {
 // ── Playwright browser singleton ──────────────────────────────────────────────
 let _browser: Browser | null = null;
 let _context: BrowserContext | null = null;
+let _pageCount = 0;
+const BROWSER_RESTART_EVERY = 100; // 100 istekte bir browser yenile (bellek sızıntısı önlemi)
 
 async function getBrowserContext(): Promise<BrowserContext> {
-    if (!_context) {
+    if (!_context || !_browser) {
+        if (_browser) { try { await _browser.close(); } catch {} }
         _browser = await chromium.launch({ headless: true });
         _context = await _browser.newContext({
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             extraHTTPHeaders: { 'Accept-Language': 'tr-TR,tr;q=0.9' },
         });
+        _pageCount = 0;
     }
     return _context;
 }
 
 async function closeBrowser() {
-    if (_browser) { await _browser.close(); _browser = null; _context = null; }
+    if (_browser) { try { await _browser.close(); } catch {} _browser = null; _context = null; }
 }
 
 async function scrapeEtekerlek(q: string): Promise<{ name: string; price: number }[]> {
     if (!q || q.length < 3) return [];
+
+    // Cache hit
+    const cacheKey = q.toLowerCase().trim();
+    if (searchCache.has(cacheKey)) return searchCache.get(cacheKey)!;
+
+    // Periyodik browser restart
+    _pageCount++;
+    if (_pageCount > 0 && _pageCount % BROWSER_RESTART_EVERY === 0) {
+        await closeBrowser();
+    }
+
     const ctx = await getBrowserContext();
     const page = await ctx.newPage();
     try {
         await page.goto(`https://www.e-tekerlek.com/arama?q=${queryEncode(q)}`, {
-            waitUntil: 'domcontentloaded', timeout: 20000,
+            waitUntil: 'domcontentloaded', timeout: 15000,
         });
-        await page.waitForTimeout(3000);
+        await page.waitForTimeout(2000);
 
-        return await page.evaluate(() => {
+        const results = await page.evaluate(() => {
             const cards = document.querySelectorAll('.product-item');
-            const results: { name: string; price: number }[] = [];
+            const out: { name: string; price: number }[] = [];
             cards.forEach(card => {
                 const nameEl = card.querySelector('a.w-100, .product-title, .w-100.product-title');
                 const name = nameEl?.getAttribute('title') || nameEl?.textContent?.trim() || '';
                 const priceText = card.textContent || '';
                 const m = priceText.match(/([\d\.]+),(\d{2})\s*TL/);
                 const price = m ? parseFloat(m[1].replace(/\./g, '') + '.' + m[2]) : null;
-                if (name && name.length > 5 && price) results.push({ name, price });
+                if (name && name.length > 5 && price) out.push({ name, price });
             });
-            return results;
+            return out;
         });
-    } catch { return []; }
-    finally { await page.close(); }
+
+        searchCache.set(cacheKey, results);
+        return results;
+    } catch { searchCache.set(cacheKey, []); return []; }
+    finally {
+        try { await page.close(); } catch {}
+    }
 }
 
 async function getCompetitorPrice(sku: string, name: string): Promise<{ price: number; matchType: string } | null> {
