@@ -28,17 +28,6 @@ interface DashboardChartsProps {
     supplierStats: SupplierStat[]
 }
 
-const SUPPLIER_LABELS: Record<string, string> = {
-    emes_2026:         'EMES',
-    emes_kulp_2026:    'EMES KULP',
-    yedek_emes_2026:   'YDK EMES',
-    zet_2026:          'ZET',
-    ciftel_2026:       'ÇİFTEL',
-    oskar_2026:        'OSKAR',
-    kaucuk_takoz_2026: 'KAUÇUK',
-    falo_2026:         'FALO',
-    mertsan_2026:      'MERTSAN',
-}
 
 export function DashboardCharts({ stockStats, supplierStats }: DashboardChartsProps) {
     const total = stockStats.reduce((s, d) => s + d.value, 0)

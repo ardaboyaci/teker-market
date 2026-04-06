@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ColumnDef } from "@tanstack/react-table"
 import Image from "next/image"
 import { ProductWithCategory, useRevisePrice } from "@/lib/hooks/use-products"

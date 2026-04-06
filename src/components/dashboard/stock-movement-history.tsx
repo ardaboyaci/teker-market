@@ -2,7 +2,7 @@
 "use client"
 
 import * as React from "react"
-import { History, TrendingUp, TrendingDown, SlidersHorizontal, Loader2, ChevronDown } from "lucide-react"
+import { History, TrendingUp, TrendingDown, Loader2, ChevronDown } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { createBrowserClient } from "@/lib/supabase/client"
 import { useQuery } from "@tanstack/react-query"
