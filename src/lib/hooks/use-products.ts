@@ -59,9 +59,6 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
             const to = from + pageSize - 1;
 
             const { data, error, count } = await query
-                // sort_weight: 1 = görsel+stok, 2 = görsel+stoksuz, 3 = görselsiz
-                // Gereksinim: supabase/migrations/20260413000000_product_sort_weight.sql uygulanmış olmalı
-                .order('sort_weight', { ascending: true, nullsFirst: false } as any)
                 .order('created_at', { ascending: false })
                 .range(from, to);
 
