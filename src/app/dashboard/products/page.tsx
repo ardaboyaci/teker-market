@@ -194,7 +194,7 @@ export default function ProductsPage() {
                         className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${
                             supplier === s.value
                                 ? "bg-primary text-white border-primary shadow-sm"
-                                : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-slate-400"
                         }`}
                     >
                         {s.label}

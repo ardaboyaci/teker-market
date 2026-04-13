@@ -59,16 +59,28 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
             const to = from + pageSize - 1;
 
             const { data, error, count } = await query
+                // sort_weight: 1 = görsel+stok, 2 = görsel+stoksuz, 3 = görselsiz
+                // Gereksinim: supabase/migrations/20260413000000_product_sort_weight.sql uygulanmış olmalı
+                .order('sort_weight', { ascending: true, nullsFirst: false } as any)
                 .order('created_at', { ascending: false })
                 .range(from, to);
 
             if (error) throw error;
 
             // Ensure that category data is properly typed as single CategoryRow or null
-            const formattedData = (data as any[]).map(item => ({
+            const rawData = (data as any[]).map(item => ({
                 ...item,
                 category: Array.isArray(item.category) ? item.category[0] : item.category
             })) as ProductWithCategory[];
+
+            // Client-side fallback sort (migration henüz uygulanmadıysa da doğru sıralama sağlar)
+            const formattedData = rawData.slice().sort((a, b) => {
+                const weight = (p: ProductWithCategory): number => {
+                    if (!(p as any).image_url) return 3;
+                    return ((p as any).quantity_on_hand ?? 0) > 0 ? 1 : 2;
+                };
+                return weight(a) - weight(b);
+            });
 
             return {
                 products: formattedData,

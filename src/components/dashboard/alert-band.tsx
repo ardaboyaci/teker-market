@@ -40,7 +40,7 @@ export function AlertBand({ zeroStockCount, criticalStockCount }: AlertBandProps
                         </span>
                     )}
                     {criticalStockCount > 0 && (
-                        <span className="text-red-100">
+                        <span className="text-white">
                             <span className="font-extrabold text-base text-white">{criticalStockCount}</span> ürün kritik seviyede
                         </span>
                     )}

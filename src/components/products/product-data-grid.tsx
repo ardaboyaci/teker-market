@@ -116,7 +116,7 @@ export function ProductDataGrid<TData, TValue>({
                         placeholder="Ürün Ara (İsim, SKU, Barkod)..."
                         value={searchTerm}
                         onChange={(event: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(event.target.value)}
-                        className="pl-9 bg-white shadow-sm border-slate-200 transition-colors focus-visible:ring-primary dark:bg-slate-950 dark:border-slate-800"
+                        className="pl-9 bg-white shadow-sm border-slate-200 transition-colors focus-visible:ring-primary"
                     />
                 </div>
 
@@ -147,17 +147,17 @@ export function ProductDataGrid<TData, TValue>({
                     </Select>
 
                     {/* Grid / Table toggle */}
-                    <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                    <div className="flex items-center rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
                         <button
                             onClick={() => setViewMode("table")}
-                            className={`p-2 transition-colors ${viewMode === "table" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"}`}
+                            className={`p-2 transition-colors ${viewMode === "table" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50"}`}
                             title="Tablo görünümü"
                         >
                             <List className="w-4 h-4" />
                         </button>
                         <button
                             onClick={() => setViewMode("grid")}
-                            className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 dark:hover:text-slate-200"}`}
+                            className={`p-2 transition-colors ${viewMode === "grid" ? "bg-primary text-white" : "text-slate-400 hover:text-slate-700 hover:bg-slate-50"}`}
                             title="Kart grid görünümü"
                         >
                             <LayoutGrid className="w-4 h-4" />
@@ -195,7 +195,7 @@ export function ProductDataGrid<TData, TValue>({
                     {isLoading ? (
                         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
                             {Array.from({ length: 10 }).map((_, i) => (
-                                <div key={i} className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
+                                <div key={i} className="rounded-xl border border-slate-200 overflow-hidden">
                                     <Skeleton className="aspect-square w-full" />
                                     <div className="p-3 space-y-2">
                                         <Skeleton className="h-3 w-16" />
@@ -226,14 +226,14 @@ export function ProductDataGrid<TData, TValue>({
                 </div>
             ) : (
                 /* Tablo Modu */
-                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden dark:bg-slate-950 dark:border-slate-800">
+                <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                     <div className="overflow-x-auto">
                         <Table>
                             <TableHeader>
                                 {table.getHeaderGroups().map((headerGroup) => (
-                                    <TableRow key={headerGroup.id} className="bg-slate-50/50 hover:bg-slate-50/50 dark:bg-slate-900/50 dark:hover:bg-slate-900/50 border-b-slate-200 dark:border-b-slate-800">
+                                    <TableRow key={headerGroup.id} className="bg-slate-50/50 hover:bg-slate-50/50 border-b-slate-200">
                                         {headerGroup.headers.map((header) => (
-                                            <TableHead key={header.id} className="h-10 text-xs uppercase tracking-wider text-slate-500 font-semibold dark:text-slate-400 whitespace-nowrap px-4 py-3 align-middle">
+                                            <TableHead key={header.id} className="h-10 text-xs uppercase tracking-wider text-slate-500 font-semibold whitespace-nowrap px-4 py-3 align-middle">
                                                 {header.isPlaceholder
                                                     ? null
                                                     : flexRender(header.column.columnDef.header, header.getContext())}
@@ -245,7 +245,7 @@ export function ProductDataGrid<TData, TValue>({
                             <TableBody>
                                 {isLoading ? (
                                     Array.from({ length: 8 }).map((_, i) => (
-                                        <TableRow key={i} className="border-b border-slate-100 dark:border-slate-800">
+                                        <TableRow key={i} className="border-b border-slate-100">
                                             <TableCell colSpan={columns.length} className="py-2 px-4">
                                                 <Skeleton className="h-8 w-full" />
                                             </TableCell>
@@ -263,14 +263,14 @@ export function ProductDataGrid<TData, TValue>({
                                                 key={row.id}
                                                 data-state={row.getIsSelected() && "selected"}
                                                 onClick={() => onRowClick?.(row.original)}
-                                                className={`border-b border-slate-100 transition-colors dark:border-slate-800/60 cursor-pointer ${
+                                                className={`border-b border-slate-100 transition-colors cursor-pointer ${
                                                     selectedProductId === (row.original as any).id
                                                         ? "bg-blue-50/70 hover:bg-blue-50"
                                                         : rowColor
                                                 }`}
                                             >
                                                 {row.getVisibleCells().map((cell) => (
-                                                    <TableCell key={cell.id} className="py-1.5 px-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300">
+                                                    <TableCell key={cell.id} className="py-1.5 px-4 whitespace-nowrap text-sm text-slate-700">
                                                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                                                     </TableCell>
                                                 ))}
@@ -289,17 +289,17 @@ export function ProductDataGrid<TData, TValue>({
                     </div>
 
                     {/* Pagination Footer */}
-                    <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/30 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/20">
-                        <div className="flex bg-transparent text-sm text-slate-500 dark:text-slate-400 tracking-tight">
-                            <span className="font-medium text-slate-900 dark:text-slate-100">{(page - 1) * pageSize + (totalCount > 0 ? 1 : 0)}-{Math.min(page * pageSize, totalCount)}</span>
+                    <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/30 px-4 py-3">
+                        <div className="flex bg-transparent text-sm text-slate-500 tracking-tight">
+                            <span className="font-medium text-slate-900">{(page - 1) * pageSize + (totalCount > 0 ? 1 : 0)}-{Math.min(page * pageSize, totalCount)}</span>
                             <span className="mx-1">/</span>
-                            <span className="font-medium text-slate-900 dark:text-slate-100">{totalCount}</span> kayıt gösteriliyor
+                            <span className="font-medium text-slate-900">{totalCount}</span> kayıt gösteriliyor
                         </div>
                         <div className="flex space-x-2">
-                            <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100 shadow-sm transition-all h-8 dark:bg-slate-950 dark:hover:bg-slate-900 dark:border-slate-800" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+                            <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100 shadow-sm transition-all h-8" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
                                 Önceki
                             </Button>
-                            <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100 shadow-sm transition-all h-8 dark:bg-slate-950 dark:hover:bg-slate-900 dark:border-slate-800" onClick={() => onPageChange(page + 1)} disabled={page >= Math.ceil(totalCount / pageSize)}>
+                            <Button variant="outline" size="sm" className="bg-white hover:bg-slate-100 shadow-sm transition-all h-8" onClick={() => onPageChange(page + 1)} disabled={page >= Math.ceil(totalCount / pageSize)}>
                                 Sonraki
                             </Button>
                         </div>

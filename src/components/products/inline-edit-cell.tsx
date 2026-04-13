@@ -85,7 +85,7 @@ export function InlineEditCell({ initialValue, onSave, type = 'text', formatDisp
 
     return (
         <div
-            className="cursor-pointer min-h-[24px] px-2 py-1 -mx-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+            className="cursor-pointer min-h-[24px] px-2 py-1 -mx-2 hover:bg-slate-100 rounded transition-colors"
             onDoubleClick={handleDoubleClick}
             title="Düzenlemek için çift tıklayın"
         >
