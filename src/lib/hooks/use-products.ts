@@ -59,6 +59,7 @@ export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, 
             const to = from + pageSize - 1;
 
             const { data, error, count } = await query
+                .order('sort_weight', { ascending: true } as any)
                 .order('created_at', { ascending: false })
                 .range(from, to);
 
