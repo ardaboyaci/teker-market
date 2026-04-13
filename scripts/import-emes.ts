@@ -141,7 +141,7 @@ async function main() {
         totI += r.inserted; totS += r.skipped; totE += r.errors;
     }
     if (!SHEET_FILTER || SHEET_FILTER === 'yedek') {
-        const r = await importAll(readEmes('YEDEK EMES 2026', 'emes_yedek_2026'), 'YEDEK EMES', 'emes-yedek');
+        const r = await importAll(readEmes('YEDEK EMES 2026', 'yedek_emes_2026'), 'YEDEK EMES', 'emes-yedek');
         totI += r.inserted; totS += r.skipped; totE += r.errors;
     }
     if (!SHEET_FILTER || SHEET_FILTER === 'kulp') {

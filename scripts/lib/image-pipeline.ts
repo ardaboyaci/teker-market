@@ -19,7 +19,7 @@ const BUCKET = 'product-media';
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
 const http = axios.create({
     httpsAgent,
-    timeout: 20000,
+    timeout: 30000,
     headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept-Language': 'tr-TR,tr;q=0.9',
@@ -59,7 +59,7 @@ export async function downloadAndProcess(
     outputPath: string,
 ): Promise<string | null> {
     try {
-        const { data } = await http.get(imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+        const { data } = await http.get(imageUrl, { responseType: 'arraybuffer', timeout: 40000 });
         const buf = Buffer.from(data as ArrayBuffer);
 
         const meta = await sharp(buf).metadata();

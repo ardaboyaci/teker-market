@@ -28,7 +28,7 @@ import { downloadAndProcess, uploadToStorage, linkToProduct, sleep } from './lib
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 const httpsAgent = new https.Agent({ rejectUnauthorized: false });
-const http = axios.create({ httpsAgent, timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0' } });
+const http = axios.create({ httpsAgent, timeout: 25000, headers: { 'User-Agent': 'Mozilla/5.0' } });
 
 // EMES sitesindeki resim URL pattern'leri
 const EMES_IMG_BASES = [
@@ -36,28 +36,6 @@ const EMES_IMG_BASES = [
     'https://emesteker.com/uploads/resim/',
     'https://emesteker.com/Content/images/',
 ];
-
-/** SKU'dan compact URL anahtar üret: "EM 07 SMRG 80X25 F" → "EM07SMRG80X25F" */
-function skuToCompact(sku: string): string {
-    return sku
-        .toUpperCase()
-        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
-        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
-        .replace(/[*×]/g, 'X')
-        .replace(/[^A-Z0-9X]/g, '');
-}
-
-/** YEDEK SKU normalizasyonu: "YEDEK-VBP 150X50 (6005-Ø25)" → "VBP150X50" */
-function yedekToCompact(sku: string): string {
-    return sku
-        .replace(/^YEDEK[-\s]*/i, '')
-        .replace(/\(.*?\)/g, '')
-        .toUpperCase()
-        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
-        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
-        .replace(/[*×Ø]/g, 'X')
-        .replace(/[^A-Z0-9X]/g, '');
-}
 
 /** HTTP HEAD ile URL'in var olup olmadığını kontrol et */
 async function urlExists(url: string): Promise<boolean> {
@@ -69,24 +47,51 @@ async function urlExists(url: string): Promise<boolean> {
     }
 }
 
+/** SKU'dan birden fazla dosya adı variant'ı üret */
+function skuToFileVariants(sku: string): string[] {
+    const base = sku
+        .toUpperCase()
+        .replace(/İ/g, 'I').replace(/Ğ/g, 'G').replace(/Ü/g, 'U')
+        .replace(/Ş/g, 'S').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+        .replace(/[*×Ø]/g, 'X');
+
+    const clean   = base.replace(/[^A-Z0-9X]/g, '');         // EM04ZBP12532
+    const dashSep = base.replace(/[\s\/\-\.]+/g, '-')        // EM-04-ZBP-125-32
+                        .replace(/[^A-Z0-9X\-]/g, '')
+                        .replace(/\-+/g, '-').replace(/^\-|\-$/g, '');
+    const underSep = dashSep.replace(/\-/g, '_');             // EM_04_ZBP_125_32
+    const mixSlash = base.replace(/\s+/g, '')                 // EM04ZBP125/32 → EM04ZBP125-32
+                         .replace(/\//g, '-')
+                         .replace(/[^A-Z0-9X\-]/g, '');
+    const lower    = clean.toLowerCase();                     // em04zbp12532
+
+    // Yedek SKU: "YEDEK-VBP 150X50" → compact'ı prefix olmadan dene
+    const noPrefix = base.replace(/^YEDEK[-\s]*/i, '')
+                         .replace(/\(.*?\)/g, '')
+                         .replace(/[^A-Z0-9X]/g, '');
+
+    return [...new Set([clean, dashSep, underSep, mixSlash, lower, noPrefix])].filter(v => v.length >= 3);
+}
+
 /** Tier 4: SKU'dan olası görsel URL'lerini üret ve ilk geçerlisini döndür */
 async function tryDirectUrl(sku: string, name: string): Promise<string | null> {
-    const compacts = new Set<string>();
+    const variants = new Set<string>();
 
-    // SKU'dan compact
-    compacts.add(skuToCompact(sku));
-    // YEDEK prefix varsa sil
-    if (/^YEDEK/i.test(sku)) compacts.add(yedekToCompact(sku));
-    // Name'den compact (farklıysa)
-    if (name) compacts.add(skuToCompact(name.split(' ').slice(0, 4).join(' ')));
+    // SKU varyantları
+    for (const v of skuToFileVariants(sku)) variants.add(v);
+
+    // İsmin ilk 4 kelimesinden de varyant üret
+    if (name) {
+        for (const v of skuToFileVariants(name.split(' ').slice(0, 4).join(' '))) variants.add(v);
+    }
 
     const exts = ['.jpg', '.jpeg', '.png', '.webp'];
 
-    for (const compact of compacts) {
-        if (!compact || compact.length < 3) continue;
+    for (const variant of variants) {
+        if (!variant || variant.length < 3) continue;
         for (const base of EMES_IMG_BASES) {
             for (const ext of exts) {
-                const url = base + compact + ext;
+                const url = base + variant + ext;
                 if (await urlExists(url)) return url;
             }
         }
