@@ -31,7 +31,7 @@ function ReviseButton({ productId }: { productId: string }) {
             })}
             className="h-6 px-2 text-[11px] font-semibold text-amber-700 border-amber-300 hover:bg-amber-50 hover:border-amber-400"
         >
-            {revise.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Revize"}
+            {revise.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Kontrol Et"}
         </Button>
     )
 }

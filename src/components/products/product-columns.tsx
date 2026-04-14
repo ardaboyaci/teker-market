@@ -46,7 +46,7 @@ function ReviseButton({ productId }: { productId: string }) {
         >
             {revise.isPending
                 ? <RefreshCw className="w-3 h-3 animate-spin" />
-                : "Revize"
+                : "Kontrol Et"
             }
         </Button>
     )
