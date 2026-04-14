@@ -41,10 +41,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const DRY_RUN  = process.argv.includes('--dry-run');
-const RESUME   = process.argv.includes('--resume');
-const limitArg = process.argv.find(a => a.startsWith('--limit='));
-const LIMIT    = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const DRY_RUN    = process.argv.includes('--dry-run');
+const RESUME     = process.argv.includes('--resume');
+const REPROCESS  = process.argv.includes('--reprocess'); // Mevcut görselleri de yeniden işle
+const limitArg   = process.argv.find(a => a.startsWith('--limit='));
+const LIMIT      = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
 const FALO_BASE       = 'https://falometal.com';
 const OUTPUT_DIR      = path.resolve(__dirname, 'output', 'falo-images');
@@ -192,10 +193,10 @@ async function main() {
 
     type DbProduct = { id: string; sku: string; name: string; image_url: string | null };
     const allDb          = (dbProducts ?? []) as DbProduct[];
-    const dbWithoutImage = allDb.filter(p => !p.image_url);
+    const dbWithoutImage = REPROCESS ? allDb : allDb.filter(p => !p.image_url);
 
     console.log(`[DB] ${allDb.length} falo_2026 ürünü toplam`);
-    console.log(`[DB] ${dbWithoutImage.length} ürün görsel bekliyor\n`);
+    console.log(`[DB] ${dbWithoutImage.length} ürün ${REPROCESS ? '(--reprocess: tümü yeniden)' : 'görsel bekliyor'}\n`);
 
     const dbByNormSku  = new Map<string, DbProduct>();
     const dbByNormName = new Map<string, DbProduct>();

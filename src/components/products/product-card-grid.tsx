@@ -77,14 +77,14 @@ export function ProductCardGrid({ products, onDelete }: ProductCardGridProps) {
                         style={{ animationDelay: `${i * 30}ms`, animationFillMode: "both" }}
                     >
                         {/* Fotoğraf */}
-                        <div className="relative w-full aspect-square bg-slate-50 border-b border-slate-100 flex items-center justify-center overflow-hidden">
+                        <div className="relative w-full aspect-square bg-white border-b border-slate-100 flex items-center justify-center overflow-hidden">
                             {image ? (
                                 <Image
                                     src={image}
                                     alt={product.name}
                                     width={300}
                                     height={300}
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-contain mix-blend-multiply"
                                     loading="lazy"
                                 />
                             ) : (
