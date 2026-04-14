@@ -82,7 +82,8 @@ export async function downloadAndProcess(
 
         await pipeline.webp({ quality: 85 }).toFile(outputPath);
         return outputPath;
-    } catch {
+    } catch (err) {
+        console.error(`  [Download] ${imageUrl}: ${(err as Error).message}`);
         return null;
     }
 }
@@ -105,7 +106,8 @@ export async function uploadToStorage(
         if (error) { console.error(`  [Storage] ${sku}: ${error.message}`); return null; }
         const { data } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
         return data.publicUrl;
-    } catch {
+    } catch (err) {
+        console.error(`  [Storage catch] ${sku}: ${(err as Error).message}`);
         return null;
     }
 }

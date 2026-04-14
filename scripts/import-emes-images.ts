@@ -37,11 +37,13 @@ const EMES_IMG_BASES = [
     'https://emesteker.com/Content/images/',
 ];
 
-/** HTTP HEAD ile URL'in var olup olmadığını kontrol et */
+/** HTTP HEAD ile URL'in var olup olmadığını ve gerçek görsel olduğunu kontrol et */
 async function urlExists(url: string): Promise<boolean> {
     try {
         const res = await http.head(url, { validateStatus: () => true });
-        return res.status === 200;
+        if (res.status !== 200) return false;
+        const ct = (res.headers['content-type'] as string | undefined) ?? '';
+        return ct.startsWith('image/');
     } catch {
         return false;
     }
