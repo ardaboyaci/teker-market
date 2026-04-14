@@ -15,7 +15,7 @@ export const BOT_CONFIG = {
     image: {
         quality:      85,
         maxWidthPx:   800,
-        wmMaxWidthPx: 180,
+        wmMaxWidthPx: 120,  // image-pipeline.ts ile tutarlı (max 120px, %15 genişlik)
     },
     pricing: {
         undercutRatio:  0.98,   // Rakipten ucuzsa -2%

@@ -44,10 +44,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-const DRY_RUN  = process.argv.includes('--dry-run');
-const RESUME   = process.argv.includes('--resume');
-const limitArg = process.argv.find(a => a.startsWith('--limit='));
-const LIMIT    = limitArg ? parseInt(limitArg.split('=')[1]) : null;
+const DRY_RUN    = process.argv.includes('--dry-run');
+const RESUME     = process.argv.includes('--resume');
+const REPROCESS  = process.argv.includes('--reprocess'); // Mevcut görselleri de yeniden işle
+const limitArg   = process.argv.find(a => a.startsWith('--limit='));
+const LIMIT      = limitArg ? parseInt(limitArg.split('=')[1]) : null;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -232,13 +233,22 @@ async function downloadAndProcess(imageUrl: string, sku: string): Promise<string
         let pipeline = sharp(buf).resize(BOT_CONFIG.image.maxWidthPx, null, { withoutEnlargement: true });
 
         try {
-            const wmBuf     = await fs.readFile(WATERMARK);
-            const wmMeta    = await sharp(wmBuf).metadata();
-            const wmWidth   = Math.min(wmMeta.width ?? 200, BOT_CONFIG.image.wmMaxWidthPx);
-            const wmResized = await sharp(wmBuf).resize(wmWidth).toBuffer();
-            pipeline = pipeline.composite([{ input: wmResized, gravity: 'southeast', blend: 'over' }]) as typeof pipeline;
+            // image-pipeline.ts ile aynı logic: %40 opacity, max 120px, transparent background
+            const targetW  = BOT_CONFIG.image.maxWidthPx;
+            const logoSize = Math.min(Math.round(targetW * 0.15), BOT_CONFIG.image.wmMaxWidthPx);
+            const logoRaw  = await sharp(WATERMARK).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+            const pixels   = new Uint8ClampedArray(logoRaw.data);
+            for (let i = 0; i < pixels.length; i += 4) {
+                pixels[i + 3] = Math.round(pixels[i + 3] * 0.40);
+            }
+            const wmBuf = await sharp(Buffer.from(pixels), {
+                raw: { width: logoRaw.info.width, height: logoRaw.info.height, channels: 4 },
+            })
+                .resize(logoSize, logoSize, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .png()
+                .toBuffer();
+            pipeline = pipeline.composite([{ input: wmBuf, gravity: 'southeast', blend: 'over' }]) as typeof pipeline;
         } catch {
-            // Watermark yoksa suskunca devam — ama logla
             console.warn(`\n  [Watermark] ${WATERMARK} bulunamadı — watermarksız devam ediliyor`);
         }
 
@@ -290,12 +300,18 @@ async function main() {
     console.log(`\n[Adım 2] ${toProcess.length} ürün işlenecek (${doneSet.size} zaten tamamlandı)\n`);
 
     // 2. DB'den ÇİFTEL ürünlerini çek
-    const { data: dbProducts } = await supabase
+    let dbQuery = supabase
         .from('products')
         .select('id, sku, name, image_url')
         .eq('meta->>source', 'ciftel_2026')
-        .is('deleted_at', null)
-        .is('image_url', null);
+        .is('deleted_at', null);
+
+    // --reprocess yoksa sadece görselsizleri işle
+    if (!REPROCESS) {
+        dbQuery = dbQuery.is('image_url', null);
+    }
+
+    const { data: dbProducts } = await dbQuery;
 
     const dbList = (dbProducts ?? []) as { id: string; sku: string; name: string }[];
     console.log(`[DB] ${dbList.length} ÇİFTEL ürünü görsel bekliyor\n`);
