@@ -27,7 +27,7 @@ export function WhatsAppOrderButton({ sku, name, defaultQty = 1 }: WhatsAppOrder
 
     return (
         <a
-            href={`https://wa.me/902324339903?text=${message}`}
+            href={`https://wa.me/905327799903?text=${message}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-2 w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 text-sm"

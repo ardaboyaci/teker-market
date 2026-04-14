@@ -125,10 +125,26 @@ export function getProductColumns(
         {
             accessorKey: "quantity_on_hand",
             header: "Stok",
-            cell: ({ row }) => (
-                <InlineEditCell initialValue={row.original.quantity_on_hand} type="number"
-                    onSave={(val) => onUpdateProduct(row.original.id, "quantity_on_hand", val)} />
-            )
+            cell: ({ row }) => {
+                const qty = row.original.quantity_on_hand ?? 0
+                const minStock = row.original.min_stock_level ?? 0
+                return (
+                    <div className="flex flex-col gap-1">
+                        <InlineEditCell initialValue={row.original.quantity_on_hand} type="number"
+                            onSave={(val) => onUpdateProduct(row.original.id, "quantity_on_hand", val)} />
+                        {qty === 0 && (
+                            <span className="bg-red-100 text-red-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                                Stok Yok
+                            </span>
+                        )}
+                        {qty > 0 && minStock > 0 && qty <= minStock && (
+                            <span className="bg-amber-100 text-amber-700 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
+                                Kritik
+                            </span>
+                        )}
+                    </div>
+                )
+            }
         },
         {
             accessorKey: "cost_price",

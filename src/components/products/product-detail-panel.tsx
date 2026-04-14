@@ -207,7 +207,7 @@ export function ProductDetailPanel({ product, onClose }: { product: ProductWithC
                                         bg-amber-100 border-amber-300 text-amber-800 hover:bg-amber-200 disabled:opacity-50"
                                 >
                                     <RefreshCw className={`w-3 h-3 ${revizing ? 'animate-spin' : ''}`} />
-                                    Revize Et
+                                    Kontrol Et
                                 </button>
                             </div>
                         </div>

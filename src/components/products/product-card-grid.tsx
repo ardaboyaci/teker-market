@@ -65,8 +65,10 @@ export function ProductCardGrid({ products, onDelete }: ProductCardGridProps) {
                     ? new Date(scrapedAt).toLocaleDateString("tr-TR", { day: "2-digit", month: "2-digit" })
                     : null
                 const qty = product.quantity_on_hand ?? 0
-                const stockColor = qty === 0 ? "bg-red-100 text-red-700" : qty <= 5 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                const stockLabel = qty === 0 ? "Stok Yok" : qty <= 5 ? `${qty} adet` : `${qty} adet`
+                const minStock = product.min_stock_level ?? 0
+                const isCritical = qty > 0 && minStock > 0 && qty <= minStock
+                const stockColor = qty === 0 ? "bg-red-100 text-red-700" : isCritical ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                const stockLabel = qty === 0 ? "Stok Yok" : isCritical ? "Kritik" : `${qty} adet`
 
                 return (
                     <div

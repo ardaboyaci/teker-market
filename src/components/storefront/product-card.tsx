@@ -36,7 +36,7 @@ export function ProductCard({ id, name, sku, slug, sale_price, image_url, quanti
 
                 {/* WhatsApp Mini Icon */}
                 <a
-                    href={`https://wa.me/908505551234?text=${encodeURIComponent(`Merhaba, ${sku} kodlu ürün hakkında bilgi almak istiyorum.`)}`}
+                    href={`https://wa.me/905327799903?text=${encodeURIComponent(`Merhaba, ${sku} kodlu ürün hakkında bilgi almak istiyorum.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="absolute top-2 right-2 p-2 bg-white/80 backdrop-blur rounded-full shadow-sm hover:bg-emerald-50 transition-colors z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100"
