@@ -305,25 +305,26 @@ export default function ProductsPage() {
                         </div>
 
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="w-full sm:w-[220px]">
-                                <Select
-                                    value={newProduct.status}
-                                    onValueChange={(value) => setNewProduct((prev) => ({ ...prev, status: value }))}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Durum" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Aktif</SelectItem>
-                                        <SelectItem value="draft">Taslak</SelectItem>
-                                        <SelectItem value="inactive">Pasif</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                            {/* Sol grup: Durum + Görsel yükleme */}
+                            <div className="flex items-center gap-3 flex-wrap">
+                                <div className="w-[180px] shrink-0">
+                                    <Select
+                                        value={newProduct.status}
+                                        onValueChange={(value) => setNewProduct((prev) => ({ ...prev, status: value }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Durum" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Aktif</SelectItem>
+                                            <SelectItem value="draft">Taslak</SelectItem>
+                                            <SelectItem value="inactive">Pasif</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
 
-                            {/* Görsel yükleme */}
-                            <div className="flex items-center gap-3">
-                                <label className="relative cursor-pointer flex items-center gap-2 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm text-slate-600 hover:border-slate-400 transition-colors">
+                                {/* Görsel yükleme */}
+                                <label className="relative cursor-pointer flex items-center gap-2 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm text-slate-600 hover:border-slate-400 transition-colors h-10">
                                     {imageUploading
                                         ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
                                         : <ImagePlus className="w-4 h-4 text-slate-400" />
