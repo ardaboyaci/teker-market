@@ -39,7 +39,7 @@ async function main() {
         .select('id, name, meta')
         .is('deleted_at', null)
         .is('image_url', null)
-        .in('meta->>source', ['emes_2026', 'emes_kulp_2026', 'yedek_emes_2026']);
+        .or('meta->>source.eq.emes_2026,meta->>source.eq.emes_kulp_2026,meta->>source.eq.yedek_emes_2026');
 
     if (error) { console.error('[DB Hata]', error.message); process.exit(1); }
     console.log(`[DB] ${data.length} görselsiz EMES ürünü bulundu\n`);
