@@ -1,67 +1,69 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import pool from '@/lib/db/pool'
+import type { RowDataPacket } from 'mysql2/promise'
 
 export async function GET(req: NextRequest) {
     try {
         const sp = req.nextUrl.searchParams
 
         const includeInactive  = sp.get('include_inactive') === 'true'
-        const withProductCount = sp.get('with_count')       !== 'false' // varsayılan: true
-        const parentId         = sp.get('parent_id')        || null     // null = kökler
+        const withProductCount = sp.get('with_count')       !== 'false'
+        const parentId         = sp.get('parent_id')        || null
         const rootOnly         = sp.get('root_only')        === 'true'
-        const flat             = sp.get('flat')             === 'true'  // ağaç yerine düz liste
+        const flat             = sp.get('flat')             === 'true'
 
-        const supabase = await createServerClient()
-
-        // --- Temel kategori sorgusu ---
-        let catQuery = supabase
-            .from('categories')
-            .select('id, name, slug, description, path, parent_id, depth, sort_order, is_active, image_url, created_at, updated_at')
-            .order('sort_order', { ascending: true })
-            .order('name',       { ascending: true })
+        // ── Kategori sorgusu ─────────────────────────────────────────────────
+        const conditions: string[] = []
+        const args: unknown[] = []
 
         if (!includeInactive) {
-            catQuery = catQuery.eq('is_active', true)
+            conditions.push('is_active = 1')
         }
-
         if (rootOnly) {
-            catQuery = catQuery.is('parent_id', null)
+            conditions.push('parent_id IS NULL')
         } else if (parentId) {
-            catQuery = catQuery.eq('parent_id', parentId)
+            conditions.push('parent_id = ?')
+            args.push(parentId)
         }
 
-        const { data: categories, error: catError } = await catQuery
+        const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-        if (catError) {
-            console.error('[/api/categories] Supabase error:', catError)
-            return NextResponse.json({ error: 'Kategori verisi alınamadı.' }, { status: 500 })
-        }
+        const [categories] = await pool.query<RowDataPacket[]>(
+            `SELECT id, name, slug, description, path, parent_id, depth,
+                    sort_order, is_active, image_url, created_at, updated_at
+             FROM categories
+             ${where}
+             ORDER BY sort_order ASC, name ASC`,
+            args
+        )
 
-        // --- Ürün sayısını iste (opsiyonel) ---
+        // ── Ürün sayısı (opsiyonel) ──────────────────────────────────────────
         const countMap: Record<string, number> = {}
-        if (withProductCount && categories && categories.length > 0) {
-            const ids = categories.map((c) => c.id)
-            const { data: counts } = await supabase
-                .from('products')
-                .select('category_id')
-                .in('category_id', ids)
-                .eq('status', 'active')
-                .is('deleted_at', null)
+        if (withProductCount && categories.length > 0) {
+            const ids = (categories as any[]).map((c) => c.id)
+            const placeholders = ids.map(() => '?').join(',')
 
-            if (counts) {
-                counts.forEach((row: any) => {
-                    countMap[row.category_id] = (countMap[row.category_id] ?? 0) + 1
-                })
-            }
+            const [counts] = await pool.query<RowDataPacket[]>(
+                `SELECT category_id, COUNT(*) AS cnt
+                 FROM products
+                 WHERE category_id IN (${placeholders})
+                   AND status = 'active'
+                   AND deleted_at IS NULL
+                 GROUP BY category_id`,
+                ids
+            )
+            ;(counts as any[]).forEach((row) => {
+                countMap[row.category_id] = Number(row.cnt)
+            })
         }
 
-        const enriched = (categories ?? []).map((cat) => ({
+        const enriched = (categories as any[]).map((cat) => ({
             ...cat,
+            is_active:     Boolean(cat.is_active),
             product_count: withProductCount ? (countMap[cat.id] ?? 0) : undefined,
         }))
 
-        // --- Düz liste mi, ağaç mı? ---
         if (flat) {
             return NextResponse.json(
                 { categories: enriched, count: enriched.length },
@@ -72,7 +74,7 @@ export async function GET(req: NextRequest) {
             )
         }
 
-        // Ağaç yapısı: parent_id null olanlar kök, diğerleri children[]
+        // ── Ağaç yapısı ──────────────────────────────────────────────────────
         const tree = buildTree(enriched)
 
         return NextResponse.json(
@@ -88,19 +90,17 @@ export async function GET(req: NextRequest) {
     }
 }
 
-// --- Yardımcı: düz diziyi iç içe ağaca çevir (O(n) — Map tabanlı) ---
+// ── Yardımcı: düz diziyi iç içe ağaca çevir (O(n) — Map tabanlı) ─────────────
 type CategoryNode = Record<string, any> & { children: CategoryNode[] }
 
 function buildTree(rows: any[]): CategoryNode[] {
     const map = new Map<string, CategoryNode>()
     const roots: CategoryNode[] = []
 
-    // Önce tüm node'ları map'e ekle
     for (const row of rows) {
         map.set(row.id, { ...row, children: [] })
     }
 
-    // Sonra parent-child ilişkisini kur
     for (const row of rows) {
         const node = map.get(row.id)!
         if (row.parent_id && map.has(row.parent_id)) {

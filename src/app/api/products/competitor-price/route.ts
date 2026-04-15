@@ -1,15 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase/server'
+import pool from '@/lib/db/pool'
+import type { RowDataPacket, ResultSetHeader } from 'mysql2/promise'
 
 export async function POST(req: NextRequest) {
     try {
-        const supabase = await createServerClient()
-
-        // Auth guard — getUser() sunucu tarafında her zaman doğrular (getSession() cache'lenebilir)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-            return NextResponse.json({ error: 'Yetkisiz erişim.' }, { status: 401 })
-        }
+        // Docker versiyonunda Supabase auth yok — API erişimi açık.
+        // Prod'da bu endpoint rate-limit veya API key ile korunmalıdır.
 
         const body = await req.json()
         const { productId } = body
@@ -19,16 +16,19 @@ export async function POST(req: NextRequest) {
         }
 
         // Ürünü çek
-        const { data: product, error: fetchErr } = await supabase
-            .from('products')
-            .select('id, sku, sale_price, competitor_price, competitor_source')
-            .eq('id', productId)
-            .is('deleted_at', null)
-            .single()
+        const [rows] = await pool.query<RowDataPacket[]>(
+            `SELECT id, sku, sale_price, competitor_price, competitor_source
+             FROM products
+             WHERE id = ? AND deleted_at IS NULL
+             LIMIT 1`,
+            [productId]
+        )
 
-        if (fetchErr || !product) {
+        if ((rows as any[]).length === 0) {
             return NextResponse.json({ error: 'Ürün bulunamadı.' }, { status: 404 })
         }
+
+        const product = (rows as any[])[0]
 
         if (!product.competitor_price) {
             return NextResponse.json(
@@ -37,37 +37,40 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const newPrice   = parseFloat(String(product.competitor_price))
-        const oldPrice   = product.sale_price ? parseFloat(String(product.sale_price)) : null
+        const newPrice = parseFloat(String(product.competitor_price))
+        const oldPrice = product.sale_price ? parseFloat(String(product.sale_price)) : null
 
         // sale_price = competitor_price
-        const { data: updated, error: updateErr } = await supabase
-            .from('products')
-            .update({ sale_price: newPrice, status: 'active' })
-            .eq('id', productId)
-            .select('id, sku, sale_price, competitor_price, status')
-            .single()
+        const [result] = await pool.query<ResultSetHeader>(
+            `UPDATE products SET sale_price = ?, status = 'active', updated_at = CURRENT_TIMESTAMP(6)
+             WHERE id = ?`,
+            [newPrice, productId]
+        )
 
-        if (updateErr) {
-            console.error('[competitor-price] update error:', updateErr.message)
+        if (result.affectedRows === 0) {
             return NextResponse.json({ error: 'Güncelleme başarısız.' }, { status: 500 })
         }
 
-        // Ek price_history kaydı (trigger ayrıca da yazar, bu açıklayıcı not)
-        await supabase.from('price_history').insert({
-            product_id:    productId,
-            price_type:    'sale',
-            old_price:     oldPrice,
-            new_price:     newPrice,
-            change_reason: `[revize] ${product.competitor_source ?? 'e-tekerlek.com'} fiyatı uygulandı`,
-        })
+        // price_history kaydı (trigger ayrıca da yazar)
+        await pool.query(
+            `INSERT INTO price_history (product_id, price_type, old_price, new_price, change_reason)
+             VALUES (?, 'sale', ?, ?, ?)`,
+            [productId, oldPrice, newPrice,
+             `[revize] ${product.competitor_source ?? 'e-tekerlek.com'} fiyatı uygulandı`]
+        )
 
         return NextResponse.json({
             ok: true,
-            product: updated,
+            product: {
+                id:             productId,
+                sku:            product.sku,
+                sale_price:     newPrice,
+                competitor_price: product.competitor_price,
+                status:         'active',
+            },
             applied: {
-                old_price:        oldPrice,
-                new_price:        newPrice,
+                old_price:         oldPrice,
+                new_price:         newPrice,
                 competitor_source: product.competitor_source,
             },
         })

@@ -1,31 +1,75 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server'
 import { unstable_cache } from 'next/cache'
-import { createServerClient } from '@/lib/supabase/server'
+import pool from '@/lib/db/pool'
 import { SearchQuerySchema } from '@/lib/validations/price.schema'
+import type { RowDataPacket } from 'mysql2/promise'
 
 // ── Cache factory ─────────────────────────────────────────────────────────────
-// Arama sonuçları 30 sn boyunca cache'lenir.
-// Aynı q+filtre kombinasyonu tekrar geldiğinde DB'ye istek atılmaz.
 function getCachedSearch(params: Record<string, unknown>) {
     const cacheKey = JSON.stringify(params)
 
     return unstable_cache(
         async () => {
-            const supabase = await createServerClient()
+            const conditions: string[] = ['p.deleted_at IS NULL']
+            const args: unknown[] = []
 
-            const { data, error } = await supabase.rpc('rpc_search_products', {
-                p_search:         params.q          ?? null,
-                p_category_id:    params.category_id ?? null,
-                p_status:         params.status      ?? null,
-                p_min_price:      params.min_price   ?? null,
-                p_max_price:      params.max_price   ?? null,
-                p_low_stock_only: params.low_stock   ?? false,
-                p_limit:          params.limit,
-                p_offset:         params.offset,
-            })
+            // Arama: LIKE tabanlı (PostgreSQL'deki tsvector/trigram yerine)
+            if (params.q) {
+                conditions.push('(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)')
+                args.push(`%${params.q}%`, `%${params.q}%`, `%${params.q}%`)
+            }
 
-            if (error) throw error
-            return data ?? []
+            if (params.category_id) {
+                conditions.push('p.category_id = ?')
+                args.push(params.category_id)
+            }
+
+            if (params.status) {
+                conditions.push('p.status = ?')
+                args.push(params.status)
+            }
+
+            if (params.min_price != null) {
+                conditions.push('p.sale_price >= ?')
+                args.push(params.min_price)
+            }
+
+            if (params.max_price != null) {
+                conditions.push('p.sale_price <= ?')
+                args.push(params.max_price)
+            }
+
+            if (params.low_stock) {
+                conditions.push('p.quantity_on_hand <= p.min_stock_level')
+            }
+
+            const where = conditions.join(' AND ')
+            const limit  = Number(params.limit)  || 50
+            const offset = Number(params.offset) || 0
+
+            const [rows] = await pool.query<RowDataPacket[]>(
+                `SELECT
+                    p.id, p.sku, p.barcode, p.name, p.slug,
+                    p.category_id,
+                    c.name AS category_name,
+                    p.base_price, p.sale_price, p.vat_rate,
+                    p.quantity_on_hand, p.min_stock_level,
+                    p.status, p.is_featured,
+                    p.attributes, p.tags,
+                    p.created_at, p.updated_at
+                FROM products p
+                LEFT JOIN categories c ON p.category_id = c.id
+                WHERE ${where}
+                ORDER BY p.name ASC
+                LIMIT ? OFFSET ?`,
+                [...args, limit, offset]
+            )
+
+            return (rows as any[]).map((row) => ({
+                ...row,
+                is_featured: Boolean(row.is_featured),
+            }))
         },
         [`search`, cacheKey],
         { revalidate: 30, tags: ['products', 'search'] }
@@ -61,9 +105,7 @@ export async function GET(req: NextRequest) {
             { results, count: results.length },
             {
                 status: 200,
-                headers: {
-                    'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=15',
-                },
+                headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=15' },
             }
         )
     } catch (err) {
