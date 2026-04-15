@@ -135,6 +135,11 @@ export default function ProductsPage() {
         })
     }, [deleteProduct])
 
+    const handleSearchChange = React.useCallback((val: string) => {
+        setSearch(val)
+        setPage(1)
+    }, [])
+
     const columns = React.useMemo(() => {
         return getProductColumns(handleUpdateProduct, handleDeleteProduct, pendingDeleteId, confirmDelete)
     }, [handleUpdateProduct, handleDeleteProduct, pendingDeleteId, confirmDelete])
@@ -405,10 +410,7 @@ export default function ProductsPage() {
                         page={page}
                         pageSize={pageSize}
                         onPageChange={setPage}
-                        onSearchChange={(val) => {
-                            setSearch(val)
-                            setPage(1)
-                        }}
+                        onSearchChange={handleSearchChange}
                         categoryId={categoryId}
                         onCategoryChange={(val) => { setCategoryId(val); setPage(1); }}
                         status={status}
