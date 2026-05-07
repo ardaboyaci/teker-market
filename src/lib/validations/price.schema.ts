@@ -59,6 +59,7 @@ export const PriceHistoryInsertSchema = z.object({
 // ── API query parametresi şeması (/api/products, /api/search) ─────────────────
 export const ProductQuerySchema = z.object({
     search:           z.string().max(200).optional(),
+    supplier:         z.enum(['EMES', 'EMES_KULP', 'ZET', 'MERTSAN', 'YEDEK_EMES', 'CFT', 'OSK', 'KAU', 'FAL']).optional(),
     category_id:      z.string().uuid().optional(),
     include_children: z.coerce.boolean().default(true),
     status:           z.enum(['active', 'inactive', 'draft', 'archived']).optional(),

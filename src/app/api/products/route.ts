@@ -50,6 +50,24 @@ function getCachedProducts(params: ParsedParams) {
                 conditions.push('(p.name LIKE ? OR p.sku LIKE ? OR p.barcode LIKE ?)')
                 args.push(`%${p.search}%`, `%${p.search}%`, `%${p.search}%`)
             }
+            if (p.supplier) {
+                const sourceMap: Record<string, string> = {
+                    EMES:       'emes_2026',
+                    EMES_KULP:  'emes_kulp_2026',
+                    ZET:        'zet_2026',
+                    MERTSAN:    'mertsan_2026',
+                    YEDEK_EMES: 'yedek_emes_2026',
+                    CFT:        'ciftel_2026',
+                    OSK:        'oskar_2026',
+                    KAU:        'kaucuk_takoz_2026',
+                    FAL:        'falo_2026',
+                }
+                const source = sourceMap[p.supplier]
+                if (source) {
+                    conditions.push("JSON_UNQUOTE(JSON_EXTRACT(p.meta, '$.source')) = ?")
+                    args.push(source)
+                }
+            }
             if (p.status)              { conditions.push('p.status = ?');        args.push(p.status) }
             if (p.min_price != null)   { conditions.push('p.sale_price >= ?');   args.push(p.min_price) }
             if (p.max_price != null)   { conditions.push('p.sale_price <= ?');   args.push(p.max_price) }
@@ -69,7 +87,7 @@ function getCachedProducts(params: ParsedParams) {
             )
             const total = (countRows[0] as any).total as number
 
-            // Sayfalandırılmış veri
+            // Sayfalandırılmış veri — görselli+stoklu ürünler önce
             const [rows] = await pool.query<RowDataPacket[]>(
                 `SELECT
                     p.id, p.sku, p.barcode, p.name, p.slug, p.short_description,
@@ -79,13 +97,21 @@ function getCachedProducts(params: ParsedParams) {
                     p.quantity_on_hand, p.min_stock_level,
                     p.weight, p.width, p.height,
                     p.attributes, p.status, p.is_featured, p.tags,
+                    p.image_url,
+                    p.competitor_price, p.competitor_source,
                     p.created_at, p.updated_at,
                     pm.url AS media_url, pm.alt_text AS media_alt
                 FROM products p
                 LEFT JOIN categories c   ON p.category_id = c.id
                 LEFT JOIN product_media pm ON pm.product_id = p.id AND pm.is_primary = 1
                 WHERE ${where}
-                ORDER BY p.${sortCol} ${sortDir}
+                ORDER BY
+                    CASE
+                        WHEN (p.image_url IS NOT NULL OR pm.url IS NOT NULL) AND p.quantity_on_hand > 0 THEN 1
+                        WHEN (p.image_url IS NOT NULL OR pm.url IS NOT NULL) THEN 2
+                        ELSE 3
+                    END ASC,
+                    p.${sortCol} ${sortDir}
                 LIMIT ? OFFSET ?`,
                 [...args, p.limit, p.offset]
             )
@@ -117,8 +143,12 @@ function getCachedProducts(params: ParsedParams) {
                 status:           row.status,
                 is_featured:      Boolean(row.is_featured),
                 tags:             row.tags,
-                created_at:       row.created_at,
-                updated_at:       row.updated_at,
+                image_url:              (row.image_url as string | null) ?? (row.media_url as string | null) ?? null,
+                competitor_price:       row.competitor_price ?? null,
+                competitor_source:      row.competitor_source ?? null,
+                competitor_scraped_at:  null,
+                created_at:             row.created_at,
+                updated_at:             row.updated_at,
                 primary_image: row.media_url ? {
                     url:      row.media_url,
                     alt_text: row.media_alt,
@@ -137,6 +167,7 @@ function buildParams(req: NextRequest) {
     const sp = req.nextUrl.searchParams
     const raw = {
         search:           sp.get('search')?.trim()       || undefined,
+        supplier:         sp.get('supplier')?.trim()     || undefined,
         category_id:      sp.get('category_id')          || undefined,
         include_children: sp.get('include_children')     ?? undefined,
         status:           sp.get('status')               || undefined,
