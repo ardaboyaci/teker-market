@@ -13,6 +13,24 @@ import { ReorderPanel } from "@/components/dashboard/reorder-panel"
 
 export const revalidate = 60
 
+// Supabase PostgREST max 1000 satır döner — büyük tablolar için sayfalandır
+async function supabaseFetchAll<T>(
+    fetcher: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>
+): Promise<T[]> {
+    const PAGE = 1000
+    const all: T[] = []
+    let from = 0
+    while (true) {
+        const { data, error } = await fetcher(from, from + PAGE - 1)
+        if (error) throw error
+        if (!data?.length) break
+        all.push(...data)
+        if (data.length < PAGE) break
+        from += PAGE
+    }
+    return all
+}
+
 const SUPPLIER_LABELS: Record<string, string> = {
     emes_2026:         'EMES',
     emes_kulp_2026:    'EMES KULP',
@@ -85,15 +103,13 @@ export default async function DashboardPage() {
         created_at: p.created_at ?? '',
     }))
 
-    // ── 4. Tedarikçi breakdown — yalnızca meta + status (küçük payload) ──────
-    const { data: supplierRaw } = await supabase
-        .from('products')
-        .select('meta, status')
-        .is('deleted_at', null)
-        .limit(20000)
+    // ── 4. Tedarikçi breakdown — tüm ürünler sayfalandırılarak çekilir ─────────
+    const supplierRaw = await supabaseFetchAll((from, to) =>
+        supabase.from('products').select('meta, status').is('deleted_at', null).range(from, to)
+    )
 
     const supplierMap: Record<string, { active: number; draft: number; total: number }> = {}
-    for (const p of supplierRaw ?? []) {
+    for (const p of supplierRaw) {
         const src = (p.meta as Record<string, string>)?.source ?? 'bilinmiyor'
         if (!supplierMap[src]) supplierMap[src] = { active: 0, draft: 0, total: 0 }
         supplierMap[src].total++
@@ -104,17 +120,18 @@ export default async function DashboardPage() {
         .map(([supplier, s]) => ({ supplier, ...s }))
         .sort((a, b) => b.total - a.total)
 
-    // ── 5. Envanter değeri — yalnızca stoklu aktif ürünlerin 2 kolonu ────────
-    const { data: inventoryRaw } = await supabase
-        .from('products')
-        .select('quantity_on_hand, cost_price')
-        .eq('status', 'active')
-        .is('deleted_at', null)
-        .gt('quantity_on_hand', 0)
-        .not('cost_price', 'is', null)
-        .limit(20000)
+    // ── 5. Envanter değeri — tüm stoklu aktif ürünler sayfalandırılarak çekilir
+    const inventoryRaw = await supabaseFetchAll((from, to) =>
+        supabase.from('products')
+            .select('quantity_on_hand, cost_price')
+            .eq('status', 'active')
+            .is('deleted_at', null)
+            .gt('quantity_on_hand', 0)
+            .not('cost_price', 'is', null)
+            .range(from, to)
+    )
 
-    const inventoryValue = (inventoryRaw ?? [])
+    const inventoryValue = inventoryRaw
         .reduce((sum, p) => sum + (p.quantity_on_hand ?? 0) * Number(p.cost_price ?? 0), 0)
 
     // ── Grafik verisi ─────────────────────────────────────────────────────────
