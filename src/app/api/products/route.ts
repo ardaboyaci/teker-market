@@ -50,7 +50,8 @@ function getCachedProducts(params: ParsedParams) {
                      base_price, sale_price, vat_rate, currency,
                      quantity_on_hand, min_stock_level,
                      weight, width, height,
-                     attributes, status, is_featured, tags,
+                     attributes, status, is_featured, tags, meta,
+                     image_url, competitor_price, competitor_source,
                      created_at, updated_at,
                      primary_image:product_media(url, alt_text)`,
                     { count: 'exact' }
@@ -67,6 +68,21 @@ function getCachedProducts(params: ParsedParams) {
             if (p.min_price != null)   query = query.gte('sale_price', p.min_price)
             if (p.max_price != null)   query = query.lte('sale_price', p.max_price)
             if (p.is_featured != null) query = query.eq('is_featured', p.is_featured)
+            if (p.supplier) {
+                const sourceMap: Record<string, string[]> = {
+                    EMES:       ['emes_2026'],
+                    EMES_KULP:  ['emes_kulp_2026'],
+                    ZET:        ['zet_2026'],
+                    MERTSAN:    ['mertsan_2026'],
+                    YEDEK_EMES: ['yedek_emes_2026'],
+                    CFT:        ['ciftel_2026'],
+                    OSK:        ['oskar_2026'],
+                    KAU:        ['kaucuk_takoz_2026'],
+                    FAL:        ['falo_2026'],
+                }
+                const sources = sourceMap[p.supplier]
+                if (sources) query = query.in('meta->>source' as any, sources)
+            }
 
             const { data, error, count } = await query
                 .order(p.sort_by, { ascending: p.sort_dir === 'asc' })
@@ -105,6 +121,7 @@ function buildParams(req: NextRequest) {
         max_price:        sp.get('max_price')        || undefined,
         low_stock:        sp.get('low_stock')        || undefined,
         is_featured:      sp.get('is_featured')      || undefined,
+        supplier:         sp.get('supplier')         || undefined,
         sort_by:          sp.get('sort_by')          || undefined,
         sort_dir:         sp.get('sort_dir')         || undefined,
         limit:            sp.get('limit')            || undefined,

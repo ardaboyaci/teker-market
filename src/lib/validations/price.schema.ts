@@ -62,6 +62,7 @@ export const ProductQuerySchema = z.object({
     category_id:      z.string().uuid().optional(),
     include_children: z.coerce.boolean().default(true),
     status:           z.enum(['active', 'inactive', 'draft', 'archived']).optional(),
+    supplier:         z.string().max(50).optional(),
     min_price:        z.coerce.number().nonnegative().optional(),
     max_price:        z.coerce.number().nonnegative().optional(),
     low_stock:        z.coerce.boolean().default(false),
