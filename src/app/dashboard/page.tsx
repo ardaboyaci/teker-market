@@ -11,7 +11,7 @@ import { DashboardCharts } from "@/components/dashboard/charts"
 import { CriticalStockTable } from "@/components/dashboard/critical-stock-table"
 import { ReorderPanel } from "@/components/dashboard/reorder-panel"
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 // Supabase PostgREST max 1000 satır döner — büyük tablolar için sayfalandır
 async function supabaseFetchAll<T>(
