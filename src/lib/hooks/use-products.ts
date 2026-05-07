@@ -1,195 +1,160 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createBrowserClient } from '@/lib/supabase/client';
-import type { Database } from '@/types/supabase';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
-type ProductRow = Database['public']['Tables']['products']['Row'];
-type CategoryRow = Database['public']['Tables']['categories']['Row'];
+export interface ProductWithCategory {
+    id: string
+    sku: string
+    name: string
+    slug: string
+    status: string
+    sale_price: string | null
+    base_price: string | null
+    cost_price: string | null
+    wholesale_price: string | null
+    quantity_on_hand: number
+    min_stock_level: number
+    image_url: string | null
+    description: string | null
+    barcode: string | null
+    is_featured: boolean
+    tags: any
+    meta: any
+    attributes: any
+    category_id: string | null
+    created_at: string
+    updated_at: string
+    deleted_at: string | null
+    category: { id: string; name: string; slug: string; path: string } | null
+}
 
-export type ProductWithCategory = ProductRow & {
-    category: CategoryRow | null;
-};
+export type CategoryRow = {
+    id: string
+    name: string
+    slug: string
+    path: string
+    parent_id: string | null
+    depth: number
+    sort_order: number
+    is_active: boolean
+}
 
 interface UseProductsOptions {
-    page?: number;
-    pageSize?: number;
-    search?: string;
-    categoryId?: string;
-    status?: string;
-    supplier?: string;
+    page?: number
+    pageSize?: number
+    search?: string
+    categoryId?: string
+    status?: string
+    supplier?: string
 }
 
 export function useProducts({ page = 1, pageSize = 20, search = '', categoryId, status, supplier }: UseProductsOptions = {}) {
-    const supabase = createBrowserClient();
-
     return useQuery({
         queryKey: ['products', page, pageSize, search, categoryId, status, supplier],
         staleTime: 60_000,
         queryFn: async () => {
-            let query = supabase
-                .from('products')
-                .select(`
-          *,
-          category:categories(*)
-        `, { count: 'exact' })
-                .is('deleted_at', null);
-
-            if (search) {
-                query = query.or(`name.ilike.%${search}%,sku.ilike.%${search}%,barcode.ilike.%${search}%`);
-            }
-            if (categoryId && categoryId !== 'all') {
-                query = query.eq('category_id', categoryId);
-            }
-            if (status && status !== 'all') {
-                query = query.eq('status', status);
-            }
+            const params = new URLSearchParams()
+            params.set('page', String(page))
+            params.set('limit', String(pageSize))
+            if (search) params.set('search', search)
+            if (categoryId && categoryId !== 'all') params.set('category_id', categoryId)
+            if (status && status !== 'all') params.set('status', status)
             if (supplier && supplier !== 'all') {
-                if (supplier === 'EMES') query = (query as any).ilike('meta->>source', '%emes%');
-                else if (supplier === 'CFT') query = (query as any).ilike('meta->>source', '%ciftel%');
-                else if (supplier === 'OSK') query = (query as any).ilike('meta->>source', '%oskar%');
-                else if (supplier === 'KAU') query = (query as any).ilike('meta->>source', '%kaucuk%');
-                else if (supplier === 'FAL') query = (query as any).ilike('meta->>source', '%falo%');
-                else if (supplier === 'ZET') query = (query as any).ilike('meta->>source', '%zet%');
-                else if (supplier === 'EMES_KULP') query = (query as any).ilike('meta->>source', '%emes_kulp%');
-                else if (supplier === 'YEDEK_EMES') query = (query as any).ilike('meta->>source', '%yedek_emes%');
-                else if (supplier === 'MERTSAN') query = (query as any).ilike('meta->>source', '%mertsan%');
+                params.set('supplier', supplier)
             }
 
-            const from = (page - 1) * pageSize;
-            const to = from + pageSize - 1;
-
-            const { data, error, count } = await query
-                .order('sort_weight', { ascending: true } as any)
-                .order('created_at', { ascending: false })
-                .range(from, to);
-
-            if (error) throw error;
-
-            // Ensure that category data is properly typed as single CategoryRow or null
-            const rawData = (data as any[]).map(item => ({
-                ...item,
-                category: Array.isArray(item.category) ? item.category[0] : item.category
-            })) as ProductWithCategory[];
-
-            // Client-side fallback sort (migration henüz uygulanmadıysa da doğru sıralama sağlar)
-            const formattedData = rawData.slice().sort((a, b) => {
-                const weight = (p: ProductWithCategory): number => {
-                    if (!(p as any).image_url) return 3;
-                    return ((p as any).quantity_on_hand ?? 0) > 0 ? 1 : 2;
-                };
-                return weight(a) - weight(b);
-            });
+            const res = await fetch(`/api/products?${params}`)
+            if (!res.ok) throw new Error('Ürünler alınamadı.')
+            const json = await res.json()
 
             return {
-                products: formattedData,
-                totalCount: count || 0,
-            };
-        }
-    });
+                products: (json.products ?? []) as ProductWithCategory[],
+                totalCount: json.pagination?.total_count ?? 0,
+            }
+        },
+    })
 }
 
 export function useUpdateProduct() {
-    const supabase = createBrowserClient();
-    const queryClient = useQueryClient();
-
+    const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async ({ id, updates }: { id: string; updates: Partial<Database['public']['Tables']['products']['Update']> }) => {
-            const { data, error } = await supabase
-                .from('products')
-                .update(updates)
-                .eq('id', id)
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
+        mutationFn: async ({ id, updates }: { id: string; updates: Partial<ProductWithCategory> }) => {
+            const res = await fetch(`/api/products/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates),
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error(err.error || 'Güncelleme başarısız.')
+            }
+            return res.json()
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-        },
-    });
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    })
 }
 
 export function useCreateProduct() {
-    const supabase = createBrowserClient();
-    const queryClient = useQueryClient();
-
+    const queryClient = useQueryClient()
     return useMutation({
-        mutationFn: async (product: Database['public']['Tables']['products']['Insert']) => {
-            const { data, error } = await supabase
-                .from('products')
-                .insert(product)
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
+        mutationFn: async (product: Partial<ProductWithCategory>) => {
+            const res = await fetch('/api/products/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(product),
+            })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error(err.error || 'Ürün eklenemedi.')
+            }
+            return res.json()
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-        },
-    });
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    })
 }
 
 export function useDeleteProduct() {
-    const supabase = createBrowserClient();
-    const queryClient = useQueryClient();
-
+    const queryClient = useQueryClient()
     return useMutation({
         mutationFn: async (id: string) => {
-            const { data, error } = await supabase
-                .from('products')
-                .update({
-                    deleted_at: new Date().toISOString(),
-                    status: 'archived',
-                })
-                .eq('id', id)
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
+            const res = await fetch(`/api/products/${id}`, { method: 'DELETE' })
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}))
+                throw new Error(err.error || 'Ürün silinemedi.')
+            }
+            return res.json()
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-        },
-    });
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    })
 }
 
 export function useCategories() {
-    const supabase = createBrowserClient();
     return useQuery({
         queryKey: ['categories'],
         staleTime: 60_000,
         queryFn: async () => {
-            const { data, error } = await supabase
-                .from('categories')
-                .select('*')
-                .order('name');
-            if (error) throw error;
-            return data;
-        }
-    });
+            const res = await fetch('/api/categories?flat=true')
+            if (!res.ok) throw new Error('Kategoriler alınamadı.')
+            const json = await res.json()
+            return (json.categories ?? []) as CategoryRow[]
+        },
+    })
 }
 
 export function useRevisePrice() {
-    const queryClient = useQueryClient();
-
+    const queryClient = useQueryClient()
     return useMutation({
         mutationFn: async (productId: string) => {
             const res = await fetch('/api/products/competitor-price', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ productId }),
-            });
+            })
             if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || 'Revize başarısız.');
+                const err = await res.json().catch(() => ({}))
+                throw new Error(err.error || 'Revize başarısız.')
             }
-            return res.json();
+            return res.json()
         },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
-        },
-    });
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['products'] }),
+    })
 }

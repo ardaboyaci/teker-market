@@ -4,7 +4,6 @@ import Link from "next/link"
 import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { LayoutDashboard, Table2, Settings, LogOut, Menu, X } from "lucide-react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import * as React from "react"
 
 const navigation = [
@@ -21,11 +20,9 @@ interface DashboardShellProps {
 export function DashboardShell({ children, user }: DashboardShellProps) {
     const pathname = usePathname()
     const router = useRouter()
-    const supabase = createBrowserClient()
     const [mobileOpen, setMobileOpen] = React.useState(false)
 
     const handleLogout = async () => {
-        await supabase.auth.signOut()
         router.push('/login')
         router.refresh()
     }

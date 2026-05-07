@@ -1,10 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import * as React from "react"
 import { History, TrendingUp, TrendingDown, Loader2, ChevronDown } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQuery } from "@tanstack/react-query"
 
 interface Movement {
@@ -24,19 +22,19 @@ interface Props {
 }
 
 const TYPE_LABELS: Record<string, { label: string; color: string }> = {
-    in:         { label: 'Giriş',      color: 'text-emerald-600 bg-emerald-50' },
-    out:        { label: 'Çıkış',      color: 'text-rose-600 bg-rose-50' },
-    adjustment: { label: 'Düzeltme',   color: 'text-blue-600 bg-blue-50' },
-    transfer:   { label: 'Transfer',   color: 'text-purple-600 bg-purple-50' },
-    return:     { label: 'İade',       color: 'text-amber-600 bg-amber-50' },
+    in:         { label: 'Giriş',    color: 'text-emerald-600 bg-emerald-50' },
+    out:        { label: 'Çıkış',    color: 'text-rose-600 bg-rose-50' },
+    adjustment: { label: 'Düzeltme', color: 'text-blue-600 bg-blue-50' },
+    transfer:   { label: 'Transfer', color: 'text-purple-600 bg-purple-50' },
+    return:     { label: 'İade',     color: 'text-amber-600 bg-amber-50' },
 }
 
 const REF_LABELS: Record<string, string> = {
-    manual:    'Manuel',
-    import:    'Import',
-    sale:      'Satış',
+    manual:         'Manuel',
+    import:         'Import',
+    sale:           'Satış',
     purchase_order: 'Sipariş',
-    bulk_update: 'Toplu güncelleme',
+    bulk_update:    'Toplu güncelleme',
 }
 
 function timeAgo(dateStr: string): string {
@@ -51,20 +49,15 @@ function timeAgo(dateStr: string): string {
 }
 
 export function StockMovementHistory({ productId, productName }: Props) {
-    const supabase = createBrowserClient()
     const [limit, setLimit] = React.useState(10)
 
     const { data: movements, isLoading } = useQuery({
         queryKey: ['stock-movements', productId, limit],
         queryFn: async () => {
-            const { data, error } = await supabase
-                .from('stock_movements')
-                .select('id, movement_type, quantity, quantity_before, quantity_after, reference_type, reference_note, created_at')
-                .eq('product_id', productId)
-                .order('created_at', { ascending: false })
-                .limit(limit)
-            if (error) throw error
-            return data as Movement[]
+            const res = await fetch(`/api/stock-movements?product_id=${productId}&limit=${limit}`)
+            if (!res.ok) throw new Error('Hareketler alınamadı.')
+            const json = await res.json()
+            return (json.movements ?? []) as Movement[]
         },
         enabled: !!productId,
     })
@@ -87,13 +80,10 @@ export function StockMovementHistory({ productId, productName }: Props) {
                     <div className="flex flex-col items-center gap-2 py-10 text-center">
                         <History className="w-8 h-8 text-slate-200" />
                         <p className="text-sm font-semibold text-slate-400">Hareket kaydı yok</p>
-                        <p className="text-xs text-slate-300">İlk stok güncellemesinden sonra burada görünecek</p>
                     </div>
                 ) : (
                     <>
-                        {/* Sticky header */}
-                        <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100
-                                        text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        <div className="grid grid-cols-12 gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                             <div className="col-span-2">Tip</div>
                             <div className="col-span-2 text-center">Miktar</div>
                             <div className="col-span-3 text-center">Önce → Sonra</div>
@@ -107,18 +97,11 @@ export function StockMovementHistory({ productId, productName }: Props) {
                                 return (
                                     <div key={m.id} className="grid grid-cols-12 gap-2 px-4 py-2.5 items-center hover:bg-slate-50 transition-colors">
                                         <div className="col-span-2">
-                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${typeInfo.color}`}>
-                                                {typeInfo.label}
-                                            </span>
+                                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold ${typeInfo.color}`}>{typeInfo.label}</span>
                                         </div>
                                         <div className="col-span-2 text-center flex items-center justify-center gap-1">
-                                            {isPositive
-                                                ? <TrendingUp className="w-3 h-3 text-emerald-500" />
-                                                : <TrendingDown className="w-3 h-3 text-rose-500" />
-                                            }
-                                            <span className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                                {isPositive ? '+' : ''}{m.quantity}
-                                            </span>
+                                            {isPositive ? <TrendingUp className="w-3 h-3 text-emerald-500" /> : <TrendingDown className="w-3 h-3 text-rose-500" />}
+                                            <span className={`text-sm font-bold ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>{isPositive ? '+' : ''}{m.quantity}</span>
                                         </div>
                                         <div className="col-span-3 text-center">
                                             <span className="text-xs text-slate-400">{m.quantity_before}</span>
@@ -126,14 +109,8 @@ export function StockMovementHistory({ productId, productName }: Props) {
                                             <span className="text-xs font-semibold text-slate-700">{m.quantity_after}</span>
                                         </div>
                                         <div className="col-span-3">
-                                            <span className="text-xs text-slate-500">
-                                                {REF_LABELS[m.reference_type ?? ''] ?? m.reference_type ?? '—'}
-                                            </span>
-                                            {m.reference_note && (
-                                                <p className="text-[10px] text-slate-400 truncate" title={m.reference_note}>
-                                                    {m.reference_note}
-                                                </p>
-                                            )}
+                                            <span className="text-xs text-slate-500">{REF_LABELS[m.reference_type ?? ''] ?? m.reference_type ?? '—'}</span>
+                                            {m.reference_note && <p className="text-[10px] text-slate-400 truncate" title={m.reference_note}>{m.reference_note}</p>}
                                         </div>
                                         <div className="col-span-2 text-right">
                                             <span className="text-[10px] text-slate-400">{timeAgo(m.created_at)}</span>
@@ -144,10 +121,7 @@ export function StockMovementHistory({ productId, productName }: Props) {
                         </div>
                         {movements.length >= limit && (
                             <div className="px-4 py-3 border-t border-slate-100 text-center">
-                                <button
-                                    onClick={() => setLimit(l => l + 20)}
-                                    className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-1 mx-auto"
-                                >
+                                <button onClick={() => setLimit(l => l + 20)} className="text-xs text-indigo-500 hover:text-indigo-700 font-semibold flex items-center gap-1 mx-auto">
                                     <ChevronDown className="w-3 h-3" /> Daha Fazla Göster
                                 </button>
                             </div>

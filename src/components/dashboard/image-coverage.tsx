@@ -1,21 +1,12 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import pool from "@/lib/db/pool"
+import type { RowDataPacket } from "mysql2/promise"
 import { Image as ImageIcon, ArrowRight } from "lucide-react"
 import Link from "next/link"
 
 export async function ImageCoverage() {
-    const supabase = createAdminClient()
-
-    // Yalnızca aktif ve silinmemiş ürünleri alıyoruz
-    const { data: products, error } = await supabase
-        .from('products')
-        .select('id, image_url, meta')
-        .eq('status', 'active')
-        .is('deleted_at', null)
-
-    if (error) {
-        console.error("Error fetching for image coverage:", error)
-        return null
-    }
+    const [products] = await pool.query<RowDataPacket[]>(
+        `SELECT id, image_url, meta FROM products WHERE status = 'active' AND deleted_at IS NULL`
+    )
 
     const suppliers = [
         'emes_2026', 'zet_2026', 'ciftel_2026', 'oskar_2026',
@@ -25,11 +16,11 @@ export async function ImageCoverage() {
     const stats: Record<string, { total: number; withImage: number }> = {}
     suppliers.forEach(s => stats[s] = { total: 0, withImage: 0 })
 
-    for (const p of (products ?? [])) {
-        const source = ((p.meta as Record<string,unknown>)?.source) as string | undefined
+    for (const p of products as RowDataPacket[]) {
+        const source = (p.meta as Record<string, unknown>)?.source as string | undefined
         if (source && stats[source]) {
             stats[source].total++
-            if (p.image_url && p.image_url.trim() !== '') {
+            if (p.image_url && String(p.image_url).trim() !== '') {
                 stats[source].withImage++
             }
         }
@@ -43,13 +34,7 @@ export async function ImageCoverage() {
             let colorClass = 'bg-red-500'
             if (percentage > 30 && percentage <= 70) colorClass = 'bg-amber-400'
             else if (percentage > 70) colorClass = 'bg-emerald-500'
-
-            return {
-                supplier: s.replace('_2026', '').toUpperCase(),
-                ...row,
-                percentage,
-                colorClass
-            }
+            return { supplier: s.replace('_2026', '').toUpperCase(), ...row, percentage, colorClass }
         })
         .sort((a, b) => b.total - a.total)
 
@@ -60,14 +45,10 @@ export async function ImageCoverage() {
                     <ImageIcon className="w-5 h-5 text-indigo-500" />
                     <h3 className="text-sm font-bold text-slate-800">Görsel Doluluk Oranı</h3>
                 </div>
-                <Link
-                    href="/dashboard/products?filter=no-image"
-                    className="flex items-center gap-1 text-xs text-indigo-600 hover:underline font-medium"
-                >
+                <Link href="/dashboard/products?filter=no-image" className="flex items-center gap-1 text-xs text-indigo-600 hover:underline font-medium">
                     Eksikleri Listele <ArrowRight className="w-3 h-3" />
                 </Link>
             </div>
-
             <div className="space-y-4">
                 {validStats.map(stat => (
                     <div key={stat.supplier} className="flex flex-col gap-1">
@@ -78,10 +59,7 @@ export async function ImageCoverage() {
                             </span>
                         </div>
                         <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                            <div
-                                className={`h-full rounded-full ${stat.colorClass} transition-all duration-500`}
-                                style={{ width: `${stat.percentage}%` }}
-                            />
+                            <div className={`h-full rounded-full ${stat.colorClass} transition-all duration-500`} style={{ width: `${stat.percentage}%` }} />
                         </div>
                     </div>
                 ))}

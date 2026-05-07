@@ -4,7 +4,6 @@ import * as React from "react"
 import { AlertTriangle, Download, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQueryClient } from "@tanstack/react-query"
 
 interface CriticalProduct {
@@ -21,7 +20,6 @@ interface CriticalStockTableProps {
 }
 
 export function CriticalStockTable({ products }: CriticalStockTableProps) {
-    const supabase = createBrowserClient()
     const queryClient = useQueryClient()
     const [updating, setUpdating] = React.useState<string | null>(null)
     const [localQty, setLocalQty] = React.useState<Record<string, string>>({})
@@ -33,7 +31,7 @@ export function CriticalStockTable({ products }: CriticalStockTableProps) {
             return `${p.sku};"${p.name}";${p.quantity_on_hand};${p.min_stock_level};${gereken};${p.supplier ?? '-'}`
         })
         const csv = [header, ...rows].join('\n')
-        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
@@ -47,18 +45,25 @@ export function CriticalStockTable({ products }: CriticalStockTableProps) {
         const product = products.find(p => p.id === id)
         const oldQty = product?.quantity_on_hand ?? 0
 
-        await supabase.from('products').update({ quantity_on_hand: newQty }).eq('id', id)
+        await fetch(`/api/products/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quantity_on_hand: newQty }),
+        })
 
-        // stock_movements kaydı
         const qty = newQty - oldQty
-        await supabase.from('stock_movements').insert({
-            product_id:      id,
-            movement_type:   qty > 0 ? 'in' : qty < 0 ? 'out' : 'adjustment',
-            quantity:        qty,
-            quantity_before: oldQty,
-            quantity_after:  newQty,
-            reference_type:  'manual',
-            reference_note:  'Kritik stok tablosundan güncelleme',
+        await fetch('/api/stock-movements', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                product_id:      id,
+                movement_type:   qty > 0 ? 'in' : qty < 0 ? 'out' : 'adjustment',
+                quantity:        qty,
+                quantity_before: oldQty,
+                quantity_after:  newQty,
+                reference_type:  'manual',
+                reference_note:  'Kritik stok tablosundan güncelleme',
+            }),
         })
 
         queryClient.invalidateQueries({ queryKey: ['dashboard-critical'] })
@@ -90,14 +95,8 @@ export function CriticalStockTable({ products }: CriticalStockTableProps) {
                         <span className="ml-2 font-normal text-red-500 text-xs">({products.length} ürün)</span>
                     </CardTitle>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs gap-1.5 border-slate-200"
-                    onClick={handleExportCSV}
-                >
-                    <Download className="w-3 h-3" />
-                    Sipariş Listesi İndir
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5 border-slate-200" onClick={handleExportCSV}>
+                    <Download className="w-3 h-3" /> Sipariş Listesi İndir
                 </Button>
             </CardHeader>
             <CardContent className="p-0">
@@ -118,20 +117,14 @@ export function CriticalStockTable({ products }: CriticalStockTableProps) {
                                 const isZero = p.quantity_on_hand === 0
                                 return (
                                     <tr key={p.id} className={`border-b border-slate-100 last:border-0 ${isZero ? 'bg-red-50/40' : 'hover:bg-slate-50/50'}`}>
-                                        <td className="py-1.5 px-4">
-                                            <span className="font-mono text-xs font-bold text-slate-600">{p.sku}</span>
-                                        </td>
-                                        <td className="py-1.5 px-4">
-                                            <span className="text-sm text-slate-700 line-clamp-1 max-w-[280px] block">{p.name}</span>
-                                        </td>
+                                        <td className="py-1.5 px-4"><span className="font-mono text-xs font-bold text-slate-600">{p.sku}</span></td>
+                                        <td className="py-1.5 px-4"><span className="text-sm text-slate-700 line-clamp-1 max-w-[280px] block">{p.name}</span></td>
                                         <td className="py-2.5 px-4 text-center">
                                             <span className={`inline-flex items-center justify-center w-10 h-6 rounded-full text-xs font-extrabold ${isZero ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
                                                 {p.quantity_on_hand}
                                             </span>
                                         </td>
-                                        <td className="py-2.5 px-4 text-center">
-                                            <span className="text-xs text-slate-500">{p.min_stock_level}</span>
-                                        </td>
+                                        <td className="py-2.5 px-4 text-center"><span className="text-xs text-slate-500">{p.min_stock_level}</span></td>
                                         <td className="py-2.5 px-4 text-center">
                                             <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wide">
                                                 {p.supplier ?? '—'}

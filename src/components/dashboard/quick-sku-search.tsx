@@ -6,14 +6,17 @@ import Image from "next/image"
 import { Search, Loader2, Check, PackageSearch } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import type { Database } from "@/types/supabase"
-
-type Product = Database['public']['Tables']['products']['Row']
+interface Product {
+    id: string
+    sku: string
+    name: string
+    quantity_on_hand: number
+    image_url: string | null
+    meta: Record<string, unknown> | null
+}
 
 export function QuickSkuSearch() {
-    const supabase = createBrowserClient()
     const queryClient = useQueryClient()
     const [searchTerm, setSearchTerm] = React.useState("")
     const [debouncedTerm, setDebouncedTerm] = React.useState("")
@@ -34,32 +37,23 @@ export function QuickSkuSearch() {
         queryKey: ['quick-search', debouncedTerm],
         queryFn: async () => {
             if (!debouncedTerm) return []
-            
-            // SKU veya İsim üzerinden esnek (fuzzy) arama
-            const { data, error } = await supabase
-                .from('products')
-                .select('*')
-                .is('deleted_at', null)
-                .or(`sku.ilike.%${debouncedTerm}%,name.ilike.%${debouncedTerm}%`)
-                .order('sku', { ascending: true })
-                .limit(5)
-            
-            if (error) throw error
-            return data
+            const res = await fetch(`/api/products/quick-search?q=${encodeURIComponent(debouncedTerm)}&limit=5`)
+            if (!res.ok) return []
+            const json = await res.json()
+            return json.products ?? []
         },
         enabled: debouncedTerm.length > 1,
     })
 
     const updateStockMutation = useMutation({
         mutationFn: async ({ id, newStock }: { id: string, newStock: number }) => {
-            const { data, error } = await supabase
-                .from('products')
-                .update({ quantity_on_hand: newStock })
-                .eq('id', id)
-                .select()
-                .single()
-            if (error) throw error
-            return data
+            const res = await fetch(`/api/products/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quantity_on_hand: newStock }),
+            })
+            if (!res.ok) throw new Error('Güncelleme başarısız.')
+            return res.json()
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['quick-search'] })
@@ -128,7 +122,7 @@ export function QuickSkuSearch() {
                         <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mt-2 animate-in fade-in slide-in-from-top-2 shadow-md">
                             {searchResults && searchResults.length > 0 ? (
                                 <ul className="divide-y divide-slate-100">
-                                    {searchResults.map(result => {
+                                    {searchResults.map((result: Product) => {
                                         const thumb = (result as any).image_url ?? (result.meta as any)?.images?.[0] ?? null
                                         return (
                                         <li

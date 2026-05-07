@@ -1,4 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin"
+import pool from "@/lib/db/pool"
+import type { RowDataPacket } from "mysql2/promise"
 import { AlertBand } from "@/components/dashboard/alert-band"
 import { OperationalKPIs } from "@/components/dashboard/operational-kpis"
 import { StockUpdateWidget } from "@/components/dashboard/stock-update-widget"
@@ -11,7 +12,7 @@ import { DashboardCharts } from "@/components/dashboard/charts"
 import { CriticalStockTable } from "@/components/dashboard/critical-stock-table"
 import { ReorderPanel } from "@/components/dashboard/reorder-panel"
 
-export const revalidate = 60
+export const dynamic = 'force-dynamic'
 
 const SUPPLIER_LABELS: Record<string, string> = {
     emes_2026:         'EMES',
@@ -26,74 +27,69 @@ const SUPPLIER_LABELS: Record<string, string> = {
 }
 
 export default async function DashboardPage() {
-    const supabase = createAdminClient()
+    // ── 1. KPI sayımları ──────────────────────────────────────────────────────
+    const [[totalRow], [activeRow], [draftRow], [inStockRow], [zeroStockRow]] = await Promise.all([
+        pool.query<RowDataPacket[]>('SELECT COUNT(*) AS cnt FROM products WHERE deleted_at IS NULL'),
+        pool.query<RowDataPacket[]>("SELECT COUNT(*) AS cnt FROM products WHERE status = 'active' AND deleted_at IS NULL"),
+        pool.query<RowDataPacket[]>("SELECT COUNT(*) AS cnt FROM products WHERE status = 'draft' AND deleted_at IS NULL"),
+        pool.query<RowDataPacket[]>("SELECT COUNT(*) AS cnt FROM products WHERE status = 'active' AND deleted_at IS NULL AND quantity_on_hand > 0"),
+        pool.query<RowDataPacket[]>("SELECT COUNT(*) AS cnt FROM products WHERE status = 'active' AND deleted_at IS NULL AND quantity_on_hand = 0"),
+    ]) as [RowDataPacket[][], RowDataPacket[][], RowDataPacket[][], RowDataPacket[][], RowDataPacket[][]]
 
-    // ── 1. KPI sayımları — head:true, sıfır satır transfer edilir ────────────
-    const [
-        { count: totalProducts },
-        { count: activeCount },
-        { count: draftCount },
-        { count: inStockCount },
-        { count: zeroStockCount },
-    ] = await Promise.all([
-        supabase.from('products').select('*', { count: 'exact', head: true }).is('deleted_at', null),
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active').is('deleted_at', null),
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'draft').is('deleted_at', null),
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active').is('deleted_at', null).gt('quantity_on_hand', 0),
-        supabase.from('products').select('*', { count: 'exact', head: true }).eq('status', 'active').is('deleted_at', null).eq('quantity_on_hand', 0),
-    ])
+    const totalProducts  = Number((totalRow as RowDataPacket[])[0]?.cnt ?? 0)
+    const activeCount    = Number((activeRow as RowDataPacket[])[0]?.cnt ?? 0)
+    const draftCount     = Number((draftRow as RowDataPacket[])[0]?.cnt ?? 0)
+    const inStockCount   = Number((inStockRow as RowDataPacket[])[0]?.cnt ?? 0)
+    const zeroStockCount = Number((zeroStockRow as RowDataPacket[])[0]?.cnt ?? 0)
 
-    // ── 2. Kritik stok listesi — sadece gerekli kolonlar, limit 200 ──────────
-    const { data: criticalRaw } = await supabase
-        .from('products')
-        .select('id, sku, name, quantity_on_hand, min_stock_level, meta')
-        .eq('status', 'active')
-        .is('deleted_at', null)
-        .gt('min_stock_level', 0)
-        .order('quantity_on_hand', { ascending: true })
-        .limit(200)
+    // ── 2. Kritik stok listesi ────────────────────────────────────────────────
+    const [criticalRaw] = await pool.query<RowDataPacket[]>(
+        `SELECT id, sku, name, quantity_on_hand, min_stock_level, meta
+         FROM products
+         WHERE status = 'active' AND deleted_at IS NULL AND min_stock_level > 0
+         ORDER BY quantity_on_hand ASC
+         LIMIT 200`
+    )
 
-    const criticalProducts = (criticalRaw ?? [])
+    const criticalProducts = (criticalRaw as RowDataPacket[])
         .filter(p => (p.quantity_on_hand ?? 0) <= (p.min_stock_level ?? 0))
         .slice(0, 50)
         .map(p => ({
-            id:               p.id,
-            sku:              p.sku,
-            name:             p.name,
-            quantity_on_hand: p.quantity_on_hand ?? 0,
-            min_stock_level:  p.min_stock_level ?? 0,
+            id:               p.id as string,
+            sku:              p.sku as string,
+            name:             p.name as string,
+            quantity_on_hand: Number(p.quantity_on_hand ?? 0),
+            min_stock_level:  Number(p.min_stock_level ?? 0),
             supplier:         SUPPLIER_LABELS[(p.meta as Record<string, string>)?.source ?? ''] ?? null,
         }))
 
     const criticalStockCount = criticalProducts.length
 
-    // ── 3. Draft onay kuyruğu — limit 30 ─────────────────────────────────────
-    const { data: draftRaw } = await supabase
-        .from('products')
-        .select('id, sku, name, sale_price, meta, created_at')
-        .eq('status', 'draft')
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(30)
+    // ── 3. Draft onay kuyruğu ─────────────────────────────────────────────────
+    const [draftRaw] = await pool.query<RowDataPacket[]>(
+        `SELECT id, sku, name, sale_price, meta, created_at
+         FROM products
+         WHERE status = 'draft' AND deleted_at IS NULL
+         ORDER BY created_at DESC
+         LIMIT 30`
+    )
 
-    const draftQueue = (draftRaw ?? []).map(p => ({
-        id:         p.id,
-        sku:        p.sku,
-        name:       p.name,
-        sale_price: p.sale_price ?? null,
+    const draftQueue = (draftRaw as RowDataPacket[]).map(p => ({
+        id:         p.id as string,
+        sku:        p.sku as string,
+        name:       p.name as string,
+        sale_price: p.sale_price != null ? String(p.sale_price) : null,
         supplier:   (p.meta as Record<string, string>)?.source ?? null,
-        created_at: p.created_at ?? '',
+        created_at: p.created_at ? String(p.created_at) : '',
     }))
 
-    // ── 4. Tedarikçi breakdown — yalnızca meta + status (küçük payload) ──────
-    const { data: supplierRaw } = await supabase
-        .from('products')
-        .select('meta, status')
-        .is('deleted_at', null)
-        .limit(20000)
+    // ── 4. Tedarikçi breakdown ────────────────────────────────────────────────
+    const [supplierRaw] = await pool.query<RowDataPacket[]>(
+        `SELECT meta, status FROM products WHERE deleted_at IS NULL LIMIT 20000`
+    )
 
     const supplierMap: Record<string, { active: number; draft: number; total: number }> = {}
-    for (const p of supplierRaw ?? []) {
+    for (const p of supplierRaw as RowDataPacket[]) {
         const src = (p.meta as Record<string, string>)?.source ?? 'bilinmiyor'
         if (!supplierMap[src]) supplierMap[src] = { active: 0, draft: 0, total: 0 }
         supplierMap[src].total++
@@ -104,24 +100,21 @@ export default async function DashboardPage() {
         .map(([supplier, s]) => ({ supplier, ...s }))
         .sort((a, b) => b.total - a.total)
 
-    // ── 5. Envanter değeri — yalnızca stoklu aktif ürünlerin 2 kolonu ────────
-    const { data: inventoryRaw } = await supabase
-        .from('products')
-        .select('quantity_on_hand, cost_price')
-        .eq('status', 'active')
-        .is('deleted_at', null)
-        .gt('quantity_on_hand', 0)
-        .not('cost_price', 'is', null)
-        .limit(20000)
+    // ── 5. Envanter değeri ────────────────────────────────────────────────────
+    const [inventoryRaw] = await pool.query<RowDataPacket[]>(
+        `SELECT quantity_on_hand, cost_price FROM products
+         WHERE status = 'active' AND deleted_at IS NULL AND quantity_on_hand > 0 AND cost_price IS NOT NULL
+         LIMIT 20000`
+    )
 
-    const inventoryValue = (inventoryRaw ?? [])
-        .reduce((sum, p) => sum + (p.quantity_on_hand ?? 0) * Number(p.cost_price ?? 0), 0)
+    const inventoryValue = (inventoryRaw as RowDataPacket[])
+        .reduce((sum, p) => sum + Number(p.quantity_on_hand ?? 0) * Number(p.cost_price ?? 0), 0)
 
     // ── Grafik verisi ─────────────────────────────────────────────────────────
     const stockStats = [
-        { name: 'Stokta Var', value: inStockCount   ?? 0, color: '#10b981' },
-        { name: 'Stok Yok',   value: zeroStockCount ?? 0, color: '#ef4444' },
-        { name: 'Taslak',     value: draftCount     ?? 0, color: '#f59e0b' },
+        { name: 'Stokta Var', value: inStockCount,   color: '#10b981' },
+        { name: 'Stok Yok',   value: zeroStockCount, color: '#ef4444' },
+        { name: 'Taslak',     value: draftCount,     color: '#f59e0b' },
     ]
     const supplierChartStats = supplierStats.slice(0, 9).map(s => ({
         name:   SUPPLIER_LABELS[s.supplier] ?? s.supplier.replace('_2026', '').toUpperCase(),
@@ -145,54 +138,43 @@ export default async function DashboardPage() {
                 </p>
             </div>
 
-            {/* Uyarı bandı — sadece kritik durum varsa render edilir */}
             <AlertBand
-                zeroStockCount={zeroStockCount ?? 0}
+                zeroStockCount={zeroStockCount}
                 criticalStockCount={criticalStockCount}
             />
 
-            {/* KPI kartlar */}
             <OperationalKPIs
-                totalProducts={totalProducts ?? 0}
-                inStockCount={inStockCount ?? 0}
-                zeroStockCount={zeroStockCount ?? 0}
+                totalProducts={totalProducts}
+                inStockCount={inStockCount}
+                zeroStockCount={zeroStockCount}
                 criticalStockCount={criticalStockCount}
-                draftCount={draftCount ?? 0}
-                activeCount={activeCount ?? 0}
+                draftCount={draftCount}
+                activeCount={activeCount}
                 inventoryValue={inventoryValue}
             />
 
-            {/* Grafikler */}
             <DashboardCharts
                 stockStats={stockStats}
                 supplierStats={supplierChartStats}
             />
 
-            {/* Kritik stok tablosu */}
             {criticalProducts.length > 0 && (
                 <CriticalStockTable products={criticalProducts} />
             )}
 
-            {/* Hızlı stok güncelleme */}
             <StockUpdateWidget />
 
-            {/* İki kolon: Ana içerik + Yan panel */}
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-
-                {/* Sol — 2/3 genişlik */}
                 <div className="xl:col-span-2 space-y-6">
                     <DraftApprovalQueue products={draftQueue} />
                     <ReorderPanel />
                     <LowStockPanel />
                 </div>
-
-                {/* Sağ — 1/3 genişlik */}
                 <div className="space-y-6">
                     <SupplierBreakdown stats={supplierStats} />
                     <ImageCoverage />
                     <DescriptionCoverage />
                 </div>
-
             </div>
 
         </div>

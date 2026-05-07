@@ -137,6 +137,9 @@ CREATE TABLE products (
     -- EAV özellikler (JSON)
     attributes          JSON,
 
+    -- Görsel
+    image_url           TEXT,
+
     -- Durum & Meta
     status              ENUM('active','inactive','draft','archived') NOT NULL DEFAULT 'draft',
     is_featured         BOOLEAN NOT NULL DEFAULT FALSE,

@@ -5,7 +5,6 @@ import * as React from "react"
 import { ShoppingCart, Download, ChevronDown, ChevronRight, Package, Loader2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQuery } from "@tanstack/react-query"
 
 interface LowStockProduct {
@@ -30,42 +29,33 @@ const SUPPLIER_LABELS: Record<string, string> = {
 }
 
 export function ReorderPanel() {
-    const supabase = createBrowserClient()
     const [openSuppliers, setOpenSuppliers] = React.useState<Set<string>>(new Set())
 
     const { data: products, isLoading } = useQuery({
         queryKey: ['reorder-products'],
         queryFn: async () => {
-            const { data, error } = await supabase
-                .from('products')
-                .select('id, sku, name, quantity_on_hand, min_stock_level, meta')
-                .eq('status', 'active')
-                .is('deleted_at', null)
-                .gt('min_stock_level', 0)
-                .order('quantity_on_hand', { ascending: true })
-            if (error) throw error
-
-            return (data ?? [])
-                .filter(p => (p.quantity_on_hand ?? 0) <= (p.min_stock_level ?? 0))
-                .map(p => ({
+            const res = await fetch('/api/products?status=active&limit=2000&sort_by=quantity_on_hand&sort_dir=asc')
+            if (!res.ok) throw new Error('Veri alınamadı.')
+            const json = await res.json()
+            return ((json.products ?? []) as any[])
+                .filter((p: any) => (p.quantity_on_hand ?? 0) <= (p.min_stock_level ?? 0) && (p.min_stock_level ?? 0) > 0)
+                .map((p: any) => ({
                     id:               p.id,
                     sku:              p.sku,
                     name:             p.name,
                     quantity_on_hand: p.quantity_on_hand ?? 0,
                     min_stock_level:  p.min_stock_level ?? 0,
-                    supplier:         (p.meta as any)?.source ?? 'bilinmiyor',
+                    supplier:         p.meta?.source ?? 'bilinmiyor',
                 })) as LowStockProduct[]
         },
         staleTime: 60_000,
     })
 
-    // Tedarikçiye göre grupla
     const grouped = React.useMemo(() => {
         if (!products) return {}
         return products.reduce<Record<string, LowStockProduct[]>>((acc, p) => {
-            const key = p.supplier
-            if (!acc[key]) acc[key] = []
-            acc[key].push(p)
+            if (!acc[p.supplier]) acc[p.supplier] = []
+            acc[p.supplier].push(p)
             return acc
         }, {})
     }, [products])
@@ -92,12 +82,10 @@ export function ReorderPanel() {
             'Min Stok':         p.min_stock_level,
             'Sipariş Edilmeli': Math.max(0, p.min_stock_level - p.quantity_on_hand),
         }))
-
-        // Basit CSV export (xlsx bağımlılığı olmadan)
         const header  = Object.keys(rows[0]).join(';')
         const csvRows = rows.map(r => Object.values(r).join(';'))
         const csv     = [header, ...csvRows].join('\n')
-        const blob    = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+        const blob    = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
         const url     = URL.createObjectURL(blob)
         const a       = document.createElement('a')
         a.href        = url
@@ -119,13 +107,7 @@ export function ReorderPanel() {
                             {totalProducts} ürün · {totalDeficit} adet eksik
                         </span>
                     )}
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={exportToExcel}
-                        disabled={!products || products.length === 0}
-                        className="h-7 text-xs gap-1 border-slate-200"
-                    >
+                    <Button variant="outline" size="sm" onClick={exportToExcel} disabled={!products || products.length === 0} className="h-7 text-xs gap-1 border-slate-200">
                         <Download className="w-3 h-3" /> CSV İndir
                     </Button>
                 </div>
@@ -149,32 +131,18 @@ export function ReorderPanel() {
                             const isOpen  = openSuppliers.has(key)
                             return (
                                 <div key={key}>
-                                    {/* Tedarikçi başlık satırı */}
-                                    <button
-                                        onClick={() => toggleSupplier(key)}
-                                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
-                                    >
+                                    <button onClick={() => toggleSupplier(key)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left">
                                         <div className="flex items-center gap-3">
-                                            {isOpen
-                                                ? <ChevronDown className="w-4 h-4 text-slate-400" />
-                                                : <ChevronRight className="w-4 h-4 text-slate-400" />
-                                            }
-                                            <span className="text-sm font-bold text-slate-800">
-                                                {SUPPLIER_LABELS[key] ?? key.replace('_2026', '').toUpperCase()}
-                                            </span>
+                                            {isOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                                            <span className="text-sm font-bold text-slate-800">{SUPPLIER_LABELS[key] ?? key.replace('_2026', '').toUpperCase()}</span>
                                         </div>
                                         <div className="flex items-center gap-3 text-xs">
                                             <span className="text-slate-500">{items.length} ürün</span>
-                                            <span className="bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full">
-                                                {deficit} adet sipariş
-                                            </span>
+                                            <span className="bg-rose-100 text-rose-700 font-bold px-2 py-0.5 rounded-full">{deficit} adet sipariş</span>
                                         </div>
                                     </button>
-
-                                    {/* Ürün listesi */}
                                     {isOpen && (
                                         <div className="bg-slate-50/50 border-t border-slate-100">
-                                            {/* Alt tablo header */}
                                             <div className="grid grid-cols-12 gap-2 px-8 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                                 <div className="col-span-4">SKU</div>
                                                 <div className="col-span-4 truncate">Ürün</div>
@@ -185,22 +153,14 @@ export function ReorderPanel() {
                                                 const needed = Math.max(0, p.min_stock_level - p.quantity_on_hand)
                                                 return (
                                                     <div key={p.id} className="grid grid-cols-12 gap-2 px-8 py-2 items-center border-t border-slate-100 hover:bg-white transition-colors">
-                                                        <div className="col-span-4">
-                                                            <span className="text-xs font-mono font-semibold text-slate-700">{p.sku}</span>
-                                                        </div>
-                                                        <div className="col-span-4">
-                                                            <span className="text-xs text-slate-600 line-clamp-1" title={p.name}>{p.name}</span>
-                                                        </div>
+                                                        <div className="col-span-4"><span className="text-xs font-mono font-semibold text-slate-700">{p.sku}</span></div>
+                                                        <div className="col-span-4"><span className="text-xs text-slate-600 line-clamp-1" title={p.name}>{p.name}</span></div>
                                                         <div className="col-span-2 text-center">
-                                                            <span className={`text-xs font-bold ${p.quantity_on_hand === 0 ? 'text-rose-600' : 'text-amber-600'}`}>
-                                                                {p.quantity_on_hand}
-                                                            </span>
+                                                            <span className={`text-xs font-bold ${p.quantity_on_hand === 0 ? 'text-rose-600' : 'text-amber-600'}`}>{p.quantity_on_hand}</span>
                                                             <span className="text-[10px] text-slate-400">/{p.min_stock_level}</span>
                                                         </div>
                                                         <div className="col-span-2 text-right">
-                                                            <span className="text-xs font-bold text-slate-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                                                                +{needed}
-                                                            </span>
+                                                            <span className="text-xs font-bold text-slate-800 bg-amber-100 px-1.5 py-0.5 rounded">+{needed}</span>
                                                         </div>
                                                     </div>
                                                 )

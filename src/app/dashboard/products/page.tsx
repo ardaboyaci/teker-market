@@ -22,12 +22,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { PlusCircle, ChevronDown, ChevronUp, Loader2, ImagePlus } from "lucide-react"
+import { PlusCircle, ChevronDown, ChevronUp } from "lucide-react"
 import { useSearchParams } from "next/navigation"
-import type { Database } from "@/types/supabase"
-import { createBrowserClient } from "@/lib/supabase/client"
-
-type ProductInsert = Database['public']['Tables']['products']['Insert']
 
 const slugify = (value: string) => {
     return value
@@ -76,29 +72,6 @@ export default function ProductsPage() {
     const [createSuccess, setCreateSuccess] = React.useState("")
     const [selectedProduct, setSelectedProduct] = React.useState<ProductWithCategory | null>(null)
     const [imageUrl, setImageUrl] = React.useState<string | null>(null)
-    const [imagePreview, setImagePreview] = React.useState<string | null>(null)
-    const [imageUploading, setImageUploading] = React.useState(false)
-    const [imageUploadError, setImageUploadError] = React.useState("")
-    const supabase = createBrowserClient()
-
-    const handleImageUpload = async (file: File) => {
-        setImageUploading(true)
-        setImageUploadError("")
-        const ext = file.name.split('.').pop()
-        const path = `products/manual-${Date.now()}.${ext}`
-        const { error } = await supabase.storage
-            .from('product-media')
-            .upload(path, file, { upsert: true })
-        if (error) {
-            setImageUploadError("Görsel yüklenemedi, devam ediliyor")
-            setTimeout(() => setImageUploadError(""), 4000)
-            setImageUploading(false)
-            return
-        }
-        const { data } = supabase.storage.from('product-media').getPublicUrl(path)
-        setImageUrl(data.publicUrl)
-        setImageUploading(false)
-    }
     const [newProduct, setNewProduct] = React.useState({
         name: "",
         sku: "",
@@ -174,14 +147,14 @@ export default function ProductsPage() {
         const fallbackSuffix = Date.now().toString()
         const slug = [slugBase || "urun", skuPart || fallbackSuffix].join("-")
 
-        const payload: ProductInsert = {
+        const payload = {
             name,
             sku,
             slug,
             category_id: newProduct.categoryId === "all" ? null : newProduct.categoryId,
             quantity_on_hand: quantityNumber,
             sale_price: salePriceNumber !== null ? salePriceNumber.toFixed(2) : null,
-            status: newProduct.status as ProductInsert['status'],
+            status: newProduct.status,
             image_url: imageUrl || null,
         }
 
@@ -197,7 +170,6 @@ export default function ProductsPage() {
                     status: "draft",
                 })
                 setImageUrl(null)
-                setImagePreview(null)
                 setPage(1)
             },
             onError: (error: unknown) => {
@@ -328,46 +300,16 @@ export default function ProductsPage() {
                                     </Select>
                                 </div>
 
-                                {/* Görsel yükleme */}
-                                <label className="relative cursor-pointer flex items-center gap-2 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm text-slate-600 hover:border-slate-400 transition-colors h-10">
-                                    {imageUploading
-                                        ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
-                                        : <ImagePlus className="w-4 h-4 text-slate-400" />
-                                    }
-                                    {imageUploading ? "Yükleniyor..." : "Görsel Ekle"}
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                                        disabled={imageUploading}
-                                        onChange={async (e) => {
-                                            const file = e.target.files?.[0]
-                                            if (!file) return
-                                            setImagePreview(URL.createObjectURL(file))
-                                            await handleImageUpload(file)
-                                        }}
-                                    />
-                                </label>
-                                {imagePreview && !imageUploading && (
-                                    <div className="relative w-10 h-10 rounded border border-slate-200 overflow-hidden shrink-0">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img src={imagePreview} alt="Önizleme" className="w-full h-full object-cover" />
-                                        <button
-                                            type="button"
-                                            onClick={() => { setImagePreview(null); setImageUrl(null) }}
-                                            className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-3.5 h-3.5 flex items-center justify-center text-[9px] font-bold leading-none"
-                                        >×</button>
-                                    </div>
-                                )}
-                                {imageUploadError && (
-                                    <span className="text-xs text-amber-600 font-medium">{imageUploadError}</span>
-                                )}
-                                {imageUrl && !imageUploading && !imageUploadError && (
-                                    <span className="text-xs text-emerald-600 font-medium">✓ Hazır</span>
-                                )}
+                                {/* Görsel URL */}
+                                <Input
+                                    value={imageUrl ?? ""}
+                                    onChange={e => setImageUrl(e.target.value || null)}
+                                    placeholder="Görsel URL (isteğe bağlı)"
+                                    className="w-64 h-10 text-sm"
+                                />
                             </div>
 
-                            <Button type="submit" disabled={createProduct.isPending || imageUploading}>
+                            <Button type="submit" disabled={createProduct.isPending}>
                                 <PlusCircle className="h-4 w-4" />
                                 {createProduct.isPending ? "Ekleniyor..." : "Ürün Ekle"}
                             </Button>

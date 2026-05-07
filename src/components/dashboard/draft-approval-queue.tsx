@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 "use client"
 
 import * as React from "react"
 import { Clock, CheckCircle2, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQueryClient } from "@tanstack/react-query"
 
 interface DraftProduct {
@@ -25,7 +23,6 @@ const SUPPLIER_LABELS: Record<string, string> = {
 }
 
 export function DraftApprovalQueue({ products }: { products: DraftProduct[] }) {
-    const supabase = createBrowserClient()
     const queryClient = useQueryClient()
     const [selected, setSelected] = React.useState<Set<string>>(new Set())
     const [publishing, setPublishing] = React.useState(false)
@@ -48,23 +45,22 @@ export function DraftApprovalQueue({ products }: { products: DraftProduct[] }) {
         setPublishing(true)
         const ids = [...selected]
 
-        // Sadece sale_price olan ürünleri aktifleştir
         const toPublish = products
             .filter(p => selected.has(p.id) && p.sale_price && Number(p.sale_price) > 0)
             .map(p => p.id)
 
-        if (toPublish.length > 0) {
-            await supabase
-                .from('products')
-                .update({ status: 'active' })
-                .in('id', toPublish)
+        for (const id of toPublish) {
+            await fetch(`/api/products/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'active' }),
+            })
         }
 
         setSelected(new Set())
         setPublishing(false)
         queryClient.invalidateQueries({ queryKey: ['dashboard-draft'] })
 
-        // Fiyatsız ürün uyarısı
         const skipped = ids.length - toPublish.length
         if (skipped > 0) {
             alert(`${toPublish.length} ürün yayınlandı. ${skipped} ürün fiyatsız olduğu için atlandı.`)
@@ -104,10 +100,7 @@ export function DraftApprovalQueue({ products }: { products: DraftProduct[] }) {
                             {publishing ? 'Yayınlanıyor...' : `${selected.size} Ürünü Yayınla`}
                         </Button>
                     )}
-                    <a
-                        href="/dashboard/products?status=draft"
-                        className="flex items-center gap-1 text-xs text-primary hover:underline font-medium"
-                    >
+                    <a href="/dashboard/products?status=draft" className="flex items-center gap-1 text-xs text-primary hover:underline font-medium">
                         Tümünü Gör <ExternalLink className="w-3 h-3" />
                     </a>
                 </div>
@@ -118,12 +111,9 @@ export function DraftApprovalQueue({ products }: { products: DraftProduct[] }) {
                         <thead>
                             <tr className="border-b border-slate-100 bg-slate-50/50">
                                 <th className="py-2.5 px-4 w-8">
-                                    <input
-                                        type="checkbox"
-                                        className="h-3.5 w-3.5 rounded border-slate-300"
+                                    <input type="checkbox" className="h-3.5 w-3.5 rounded border-slate-300"
                                         checked={selected.size === products.length && products.length > 0}
-                                        onChange={toggleAll}
-                                    />
+                                        onChange={toggleAll} />
                                 </th>
                                 <th className="text-left py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">SKU</th>
                                 <th className="text-left py-2.5 px-4 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Ürün Adı</th>
@@ -135,25 +125,16 @@ export function DraftApprovalQueue({ products }: { products: DraftProduct[] }) {
                             {products.map(p => {
                                 const hasPrice = p.sale_price && Number(p.sale_price) > 0
                                 return (
-                                    <tr
-                                        key={p.id}
+                                    <tr key={p.id}
                                         className={`border-b border-slate-100 last:border-0 cursor-pointer transition-colors ${selected.has(p.id) ? 'bg-primary/5' : 'hover:bg-slate-50/50'}`}
                                         onClick={() => toggle(p.id)}
                                     >
                                         <td className="py-2.5 px-4">
-                                            <input
-                                                type="checkbox"
-                                                className="h-3.5 w-3.5 rounded border-slate-300 pointer-events-none"
-                                                checked={selected.has(p.id)}
-                                                readOnly
-                                            />
+                                            <input type="checkbox" className="h-3.5 w-3.5 rounded border-slate-300 pointer-events-none"
+                                                checked={selected.has(p.id)} readOnly />
                                         </td>
-                                        <td className="py-2.5 px-4">
-                                            <span className="font-mono text-xs font-bold text-slate-600">{p.sku}</span>
-                                        </td>
-                                        <td className="py-2.5 px-4">
-                                            <span className="text-xs text-slate-700 line-clamp-1 max-w-[260px] block">{p.name}</span>
-                                        </td>
+                                        <td className="py-2.5 px-4"><span className="font-mono text-xs font-bold text-slate-600">{p.sku}</span></td>
+                                        <td className="py-2.5 px-4"><span className="text-xs text-slate-700 line-clamp-1 max-w-[260px] block">{p.name}</span></td>
                                         <td className="py-2.5 px-4 text-center">
                                             <span className="text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wide">
                                                 {SUPPLIER_LABELS[p.supplier ?? ''] ?? (p.supplier ? 'EMES' : '—')}

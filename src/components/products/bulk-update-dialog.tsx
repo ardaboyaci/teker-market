@@ -2,7 +2,6 @@
 "use client"
 
 import * as React from "react"
-import { createBrowserClient } from "@/lib/supabase/client"
 import { useQueryClient } from "@tanstack/react-query"
 import {
     Dialog,
@@ -35,7 +34,6 @@ export function BulkUpdateDialog({
     selectedIds,
     onSuccess,
 }: BulkUpdateDialogProps) {
-    const supabase = createBrowserClient()
     const queryClient = useQueryClient()
     const [isLoading, setIsLoading] = React.useState(false)
     const [operation, setOperation] = React.useState<"zam" | "indirim">("zam")
@@ -47,21 +45,21 @@ export function BulkUpdateDialog({
         setIsLoading(true)
         try {
             const numPercentage = Number(percentage)
-            // If operation is zam, multiplier is 1 + (percentage / 100). Ex: 10% = 1.10
-            // If operation is indirim, multiplier is 1 - (percentage / 100). Ex: 10% = 0.90
             const multiplier = operation === "zam"
                 ? 1 + (numPercentage / 100)
                 : 1 - (numPercentage / 100)
 
-            const { error } = await supabase.rpc('rpc_bulk_update_prices', {
-                p_product_ids: selectedIds,
-                p_operation: '*',
-                p_value: multiplier,
-                p_price_column: 'sale_price',
-                p_reason: `Toplu Fiyat ${operation === 'zam' ? 'Artışı' : 'İndirimi'} (%${percentage})`
+            const res = await fetch('/api/products/bulk-price', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product_ids: selectedIds,
+                    operation: '*',
+                    value: multiplier,
+                    reason: `Toplu Fiyat ${operation === 'zam' ? 'Artışı' : 'İndirimi'} (%${percentage})`,
+                }),
             })
-
-            if (error) throw error
+            if (!res.ok) throw new Error('Güncelleme başarısız.')
 
             onSuccess()
             queryClient.invalidateQueries({ queryKey: ['products'] })

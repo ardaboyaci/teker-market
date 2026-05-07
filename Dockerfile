@@ -8,10 +8,10 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 # Bağımlılık dosyalarını kopyala
-COPY package.json package-lock.json ./
+COPY package.json package-lock.json* ./
 
 # Üretim bağımlılıklarını kur
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
@@ -41,10 +41,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
 
 # Üretim için yalnızca gerekli dosyaları kopyala
-COPY --from=builder /app/public        ./public
-COPY --from=builder /app/.next         ./.next
-COPY --from=builder /app/node_modules  ./node_modules
-COPY --from=builder /app/package.json  ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/public        ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next         ./.next
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules  ./node_modules
+COPY --from=builder --chown=nextjs:nodejs /app/package.json  ./package.json
+
+# Cache dizinine yazma izni ver
+RUN mkdir -p .next/cache && chown -R nextjs:nodejs .next
 
 USER nextjs
 
