@@ -42,7 +42,8 @@ function getCachedProducts(params: ParsedParams) {
                 }
             }
 
-            let query = supabase
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            let query: any = supabase
                 .from('products')
                 .select(
                     `id, sku, barcode, name, slug, short_description,
