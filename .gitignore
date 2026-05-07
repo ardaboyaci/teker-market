@@ -12,3 +12,6 @@ teker-market/
 # Tedarikçi Excel/XLS dosyaları — hassas fiyat verisi
 *.xls
 *.xlsx
+
+# WeTransfer indirme klasörleri
+wetransfer_*/
